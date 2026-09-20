@@ -25,6 +25,13 @@ class HomeActivity : AppCompatActivity() {
     private data class Rom(val uri: Uri, val name: String, val system: String, val zipEntry: String? = null)
     private val worker = Executors.newSingleThreadExecutor()
     private val covers = Executors.newFixedThreadPool(2)
+    private val coverMemory = object : android.util.LruCache<String, android.graphics.Bitmap>(24 * 1024 * 1024) {
+        override fun sizeOf(key: String, value: android.graphics.Bitmap) = value.allocationByteCount
+    }
+    // Accessed only on the UI thread. Multiple recycled cards share one request.
+    private data class CoverTarget(val image: ImageView, val tag: String, val generation: Int)
+    private val coverRequests = mutableMapOf<String, MutableList<CoverTarget>>()
+    private val missingCovers = mutableSetOf<String>()
     private val prefs by lazy { getSharedPreferences("library", MODE_PRIVATE) }
     private lateinit var status: TextView
     private lateinit var grid: GridView
@@ -129,6 +136,7 @@ class HomeActivity : AppCompatActivity() {
     }
 
     private fun refresh() {
+        missingCovers.clear()
         val selected = prefs.getString(folderKey(), null)
         val ticket = ++generation
         val selectedSection = section
@@ -214,25 +222,59 @@ class HomeActivity : AppCompatActivity() {
             val rom = games[position]
             val image = card.getChildAt(0) as ImageView
             (card.getChildAt(1) as TextView).text = rom.name
-            image.setImageResource(android.R.drawable.ic_menu_gallery)
+            val tag = "${rom.uri}#${rom.zipEntry}"
+            val key = "${rom.system}/${rom.name}"
+            val sameGame = image.tag == tag
+            image.tag = tag
             image.contentDescription = "${rom.name} cover"
-            image.tag = "${rom.uri}#${rom.zipEntry}"
-            val ticket = generation
-            covers.execute {
-                val bitmap = runCatching { cover(rom) }.getOrNull()
-                runOnUiThread {
-                    if (!isDestroyed && ticket == generation && image.tag == "${rom.uri}#${rom.zipEntry}" && bitmap != null) image.setImageBitmap(bitmap)
+            val cached = coverMemory.get(key)
+            if (cached != null) {
+                image.setImageBitmap(cached)
+            } else {
+                if (!sameGame) image.setImageResource(android.R.drawable.ic_menu_gallery)
+                if (key !in missingCovers) {
+                    val target = CoverTarget(image, tag, generation)
+                    val pending = coverRequests[key]
+                    if (pending != null) {
+                        pending.removeAll { it.image === image }
+                        pending.add(target)
+                    } else {
+                        coverRequests[key] = mutableListOf(target)
+                        covers.execute {
+                            val bitmap = runCatching { cover(rom) }.getOrNull()
+                            runOnUiThread {
+                                val targets = coverRequests.remove(key).orEmpty()
+                                if (isDestroyed) return@runOnUiThread
+                                if (bitmap != null) coverMemory.put(key, bitmap)
+                                else missingCovers.add(key)
+                                for (waiting in targets) {
+                                    if (waiting.generation == generation && waiting.image.tag == waiting.tag && bitmap != null) {
+                                        waiting.image.setImageBitmap(bitmap)
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
             return card
         }
     }
 
+    private fun decodeCover(bytes: ByteArray): android.graphics.Bitmap? {
+        val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
+        options.inSampleSize = 1
+        while (maxOf(options.outWidth, options.outHeight) / options.inSampleSize > 512) options.inSampleSize *= 2
+        options.inJustDecodeBounds = false
+        return BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
+    }
+
     private fun cover(rom: Rom): android.graphics.Bitmap? {
         val key = MessageDigest.getInstance("SHA-256").digest("${rom.system}/${rom.name}".toByteArray())
             .joinToString("") { "%02x".format(it) }
         val cached = File(cacheDir, "covers/$key.png")
-        if (cached.exists()) return BitmapFactory.decodeFile(cached.path)
+        if (cached.exists()) decodeCover(cached.readBytes())?.let { return it }
         val base = rom.name.replace(Regex("\\s*\\([^)]*\\)|\\s*\\[[^]]*\\]"), "").trim()
         val candidates = listOf(rom.name, "$base (USA)", "$base (USA, Europe)", "$base (Europe)", base).distinct()
         for (name in candidates) {
@@ -245,7 +287,7 @@ class HomeActivity : AppCompatActivity() {
                 connection.readTimeout = 4000
                 if (connection.responseCode != 200) continue
                 val bytes = connection.inputStream.use { it.readBytes() }
-                val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: continue
+                val bitmap = decodeCover(bytes) ?: continue
                 cached.parentFile?.mkdirs()
                 cached.writeBytes(bytes)
                 return bitmap
@@ -259,6 +301,8 @@ class HomeActivity : AppCompatActivity() {
         generation++
         worker.shutdownNow()
         covers.shutdownNow()
+        coverRequests.clear()
+        coverMemory.evictAll()
         super.onDestroy()
     }
 }
