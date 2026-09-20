@@ -1,55 +1,91 @@
 package com.aaron.mgbaandroid
 
 import android.content.Context
+import android.view.InputDevice
 import android.view.KeyEvent as K
+import android.widget.TextView
 import androidx.appcompat.app.AlertDialog
 
 object Hotkeys {
-    private val names = arrayOf("Quick save (slot 1)", "Quick load (slot 1)", "Toggle fast-forward", "Return to library")
-    private val labels = arrayOf("Disabled", "L3 + R1", "L3 + L1", "L3 + R3", "L3 + Start", "L3 + A", "L3 + B", "L3 + X", "L3 + Y")
-    private val codes = intArrayOf(-1, K.KEYCODE_BUTTON_R1, K.KEYCODE_BUTTON_L1, K.KEYCODE_BUTTON_THUMBR,
-        K.KEYCODE_BUTTON_START, K.KEYCODE_BUTTON_A, K.KEYCODE_BUTTON_B, K.KEYCODE_BUTTON_X, K.KEYCODE_BUTTON_Y)
+    private val names = arrayOf("Quick save (slot 1)", "Quick load (slot 1)", "Toggle fast-forward", "Exit app (return to frontend)", "Pause / Resume", "Pause", "Play / Resume", "Close game (mGBA home)")
+    private val legacyCodes = intArrayOf(-1, K.KEYCODE_BUTTON_R1, K.KEYCODE_BUTTON_L1, K.KEYCODE_BUTTON_THUMBR, K.KEYCODE_BUTTON_START, K.KEYCODE_BUTTON_A, K.KEYCODE_BUTTON_B, K.KEYCODE_BUTTON_X, K.KEYCODE_BUTTON_Y)
     private fun prefs(context: Context) = context.getSharedPreferences("emulator", Context.MODE_PRIVATE)
-    private fun choice(context: Context, action: Int) = prefs(context).getInt("hotkey_$action", action + 1).coerceIn(0, codes.lastIndex)
+    private fun binding(context: Context, action: Int): List<Int> {
+        val p = prefs(context)
+        val stored = p.getString("hotkey_custom_$action", null)
+        if (stored != null) return stored.split(',').mapNotNull { it.toIntOrNull() }.distinct().take(2)
+        val legacy = p.getInt("hotkey_$action", if (action < 4) action + 1 else 0).coerceIn(0, legacyCodes.lastIndex)
+        return if (legacy == 0) emptyList() else listOf(K.KEYCODE_BUTTON_THUMBL, legacyCodes[legacy])
+    }
+    private fun label(keys: List<Int>) = if (keys.isEmpty()) "Disabled" else keys.joinToString(" + ") { K.keyCodeToString(it).removePrefix("KEYCODE_").removePrefix("BUTTON_") }
+    private fun save(context: Context, action: Int, keys: List<Int>) {
+        val editor = prefs(context).edit().putString("hotkey_custom_$action", keys.joinToString(","))
+        if (keys.isNotEmpty()) names.indices.filter { it != action && binding(context, it).toSet() == keys.toSet() }
+            .forEach { editor.putString("hotkey_custom_$it", "") }
+        editor.apply()
+    }
     fun show(context: Context) {
-        AlertDialog.Builder(context).setTitle("Hotkeys — hold L3 first")
-            .setItems(names.indices.map { "${names[it]}: ${labels[choice(context, it)]}" }.toTypedArray()) { _, action ->
-                AlertDialog.Builder(context).setTitle(names[action])
-                    .setSingleChoiceItems(labels, choice(context, action)) { dialog, selected ->
-                        val editor = prefs(context).edit().putInt("hotkey_$action", selected)
-                        // One shortcut performs one action; move duplicate assignments.
-                        if (selected != 0) names.indices.filter { it != action && choice(context, it) == selected }
-                            .forEach { editor.putInt("hotkey_$it", 0) }
-                        editor.apply(); dialog.dismiss(); show(context)
-                    }.setNegativeButton("Cancel") { _, _ -> show(context) }.show()
-            }.setNeutralButton("Disable all") { _, _ ->
+        AlertDialog.Builder(context).setTitle("Hotkeys")
+            .setItems(names.indices.map { "${names[it]}: ${label(binding(context, it))}" }.toTypedArray()) { _, action -> capture(context, action) }
+            .setNeutralButton("Disable all") { _, _ ->
                 val editor = prefs(context).edit()
-                names.indices.forEach { editor.putInt("hotkey_$it", 0) }
+                names.indices.forEach { editor.putString("hotkey_custom_$it", "") }
                 editor.apply(); show(context)
             }.setPositiveButton("Done", null).show()
     }
-
+    private fun capture(context: Context, action: Int) {
+        val captured = mutableListOf<Int>()
+        val info = TextView(context).apply {
+            setPadding(32, 24, 32, 24)
+            text = "Press one controller button, or hold one and press a second, then choose Save.\nThe first button is reserved for this shortcut. Digital buttons only; stick directions and axis-only triggers are not supported."
+        }
+        val dialog = AlertDialog.Builder(context).setTitle(names[action]).setView(info)
+            .setPositiveButton("Save") { _, _ -> save(context, action, captured); show(context) }
+            .setNeutralButton("Disable") { _, _ -> save(context, action, emptyList()); show(context) }
+            .setNegativeButton("Cancel") { _, _ -> show(context) }.create()
+        dialog.setOnKeyListener { _, code, event ->
+            val sources = event.device?.sources ?: 0
+            val controller = (sources and InputDevice.SOURCE_GAMEPAD) == InputDevice.SOURCE_GAMEPAD ||
+                (sources and InputDevice.SOURCE_JOYSTICK) == InputDevice.SOURCE_JOYSTICK
+            if (!controller || !ButtonBindings.supports(code)) false else {
+                if (event.action == K.ACTION_DOWN && event.repeatCount == 0 && code !in captured && captured.size < 2) {
+                    captured.add(code)
+                    info.text = "Selected: ${label(captured)}\nChoose Save using the touchscreen. Cancel to try again."
+                    dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled = true
+                }
+                true
+            }
+        }
+        dialog.show()
+        dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled = false
+    }
     class State(private val context: Context, private val run: (Int) -> Unit) {
-        private val modifiers = mutableSetOf<Int>()
+        private val held = mutableSetOf<Pair<Int, Int>>()
         private val consumed = mutableSetOf<Pair<Int, Int>>()
-        fun clear() { modifiers.clear(); consumed.clear() }
+        fun clear() { held.clear(); consumed.clear() }
         fun handle(event: K): Boolean {
-            if (names.indices.none { choice(context, it) != 0 }) return false
-            if (event.keyCode == K.KEYCODE_BUTTON_THUMBL) {
-                if (event.action == K.ACTION_DOWN) modifiers.add(event.deviceId)
-                if (event.action == K.ACTION_UP) modifiers.remove(event.deviceId)
-                return true
-            }
             val key = event.deviceId to event.keyCode
-            if (key in consumed) {
-                if (event.action == K.ACTION_UP) consumed.remove(key)
+            if (event.action == K.ACTION_UP) {
+                held.remove(key)
+                return consumed.remove(key)
+            }
+            if (event.action != K.ACTION_DOWN) return false
+            if (event.repeatCount > 0) return key in consumed
+            held.add(key)
+            val bindings = names.indices.associateWith { binding(context, it) }
+            val action = bindings.entries.sortedByDescending { it.value.size }.firstOrNull { (_, keys) ->
+                keys.isNotEmpty() && keys.last() == event.keyCode && keys.all { (event.deviceId to it) in held }
+            }?.key
+            if (action != null) {
+                consumed.add(key)
+                run(action)
                 return true
             }
-            if (event.deviceId !in modifiers || event.action != K.ACTION_DOWN || event.repeatCount != 0) return false
-            val action = names.indices.firstOrNull { codes[choice(context, it)] == event.keyCode } ?: return false
-            consumed.add(key)
-            run(action)
-            return true
+            if (bindings.values.any { it.firstOrNull() == event.keyCode }) {
+                consumed.add(key)
+                return true
+            }
+            return false
         }
     }
 }

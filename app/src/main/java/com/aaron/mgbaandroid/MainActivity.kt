@@ -43,9 +43,26 @@ class MainActivity : AppCompatActivity(), Choreographer.FrameCallback {
         touchControls?.release()
         touchControls?.visibility = if (prefs.getBoolean("touch_controls", true)) View.VISIBLE else View.GONE
     }
+    private var pausedByUser = false
+    private fun setPaused(paused: Boolean) {
+        pausedByUser = paused
+        resetAudioQueue()
+        previousFrameNanos = 0L
+        frameDebtNanos = 0.0
+        buttonState.clear()
+        touchControls?.release()
+        touchHeld = emptySet()
+        stickHeld = emptySet()
+        stickState.clear()
+        sendButtons()
+        toast(if (paused) "Paused" else "Playing")
+    }
     private val hotkeys by lazy { Hotkeys.State(this, ::runHotkey) }
     private fun runHotkey(action: Int) {
         when (action) {
+            4 -> setPaused(!pausedByUser)
+            5 -> setPaused(true)
+            6 -> setPaused(false)
             0 -> runCatching {
                 val bytes = NativeBridge.saveState() ?: error("Could not save state")
                 stateFile(1).writeBytes(bytes)
@@ -63,7 +80,13 @@ class MainActivity : AppCompatActivity(), Choreographer.FrameCallback {
                     }.onFailure { toast("Could not load state 1") }
                 }.setNegativeButton("Cancel", null).show()
             2 -> { fastForward = !fastForward; toast(if (fastForward) "Fast-forward on" else "Fast-forward off") }
-            3 -> AlertDialog.Builder(this).setTitle("Return to library?")
+            3 -> AlertDialog.Builder(this).setTitle("Exit mGBA?")
+                .setMessage("Save game data and close the emulator task.")
+                .setPositiveButton("Exit") { _, _ ->
+                    persistBatterySave()
+                    finishAndRemoveTask()
+                }.setNegativeButton("Cancel", null).show()
+            7 -> AlertDialog.Builder(this).setTitle("Close game and return to mGBA home?")
                 .setPositiveButton("Return") { _, _ ->
                     persistBatterySave()
                     startActivity(Intent(this, HomeActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP))
@@ -128,6 +151,7 @@ class MainActivity : AppCompatActivity(), Choreographer.FrameCallback {
             startActivity(Intent(this, HomeActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP))
             finish()
         })
+        bar.addView(button("Pause/Play") { setPaused(!pausedByUser) })
         bar.addView(button("State") { showStateMenu() })
         bar.addView(button("FF") { fastForward = !fastForward; toast(if (fastForward) "Fast-forward on" else "Fast-forward off") })
         bar.addView(button("Cheat") { showCheatDialog() })
@@ -162,6 +186,7 @@ class MainActivity : AppCompatActivity(), Choreographer.FrameCallback {
                 RomArchive.load(it, displayName, intent.getStringExtra(RomArchive.ENTRY_EXTRA))
             } ?: error("Could not read ROM")
             val bytes = loaded.bytes
+            pausedByUser = false
             running = false
             Choreographer.getInstance().removeFrameCallback(this)
             resetAudioQueue()
@@ -178,6 +203,10 @@ class MainActivity : AppCompatActivity(), Choreographer.FrameCallback {
 
     override fun doFrame(frameTimeNanos: Long) {
         if (!running) return
+        if (pausedByUser) {
+            Choreographer.getInstance().postFrameCallback(this)
+            return
+        }
         if (fastForward != wasFastForward) {
             resetAudioQueue()
             wasFastForward = fastForward
@@ -225,7 +254,8 @@ class MainActivity : AppCompatActivity(), Choreographer.FrameCallback {
             val samples = pendingAudio.peekFirst() ?: break
             val written = track.write(samples, pendingOffset, samples.size - pendingOffset, AudioTrack.WRITE_NON_BLOCKING)
             if (written < 0) {
-                running = false
+                pausedByUser = false
+            running = false
                 toast("Audio output failed ($written). Reopen the ROM.")
                 return
             }
