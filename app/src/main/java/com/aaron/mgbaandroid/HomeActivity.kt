@@ -2,6 +2,8 @@ package com.aaron.mgbaandroid
 
 import android.content.Intent
 import android.graphics.BitmapFactory
+import android.graphics.Color
+import android.content.res.ColorStateList
 import android.net.Uri
 import android.os.Bundle
 import android.provider.DocumentsContract
@@ -45,17 +47,30 @@ class HomeActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        val backdrop = FrameLayout(this).apply { setBackgroundColor(Color.BLACK) }
+        backdrop.addView(ImageView(this).apply {
+            setImageResource(R.drawable.mgba_logo)
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            alpha = 0.32f
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+            isFocusable = false
+            isClickable = false
+        }, FrameLayout.LayoutParams(-1, -1))
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(20), dp(16), dp(20), dp(8))
         }
-        root.addView(TextView(this).apply { text = "mGBA Android"; textSize = 28f })
+        root.addView(TextView(this).apply { text = "mGBA Android"; textSize = 28f; setTextColor(Color.WHITE) })
         section = prefs.getString("section", "gba").takeIf { it in listOf("gba", "gbc", "gb") } ?: "gba"
         val sections = RadioGroup(this).apply { orientation = RadioGroup.HORIZONTAL }
         for ((code, label) in listOf("gba" to "GBA", "gbc" to "Game Boy Color", "gb" to "Game Boy")) {
             sections.addView(RadioButton(this).apply {
                 id = View.generateViewId()
                 text = label
+                setTextColor(Color.WHITE)
+                buttonTintList = ColorStateList(
+                    arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf()),
+                    intArrayOf(Color.rgb(184, 148, 255), Color.LTGRAY))
                 isChecked = section == code
                 setOnClickListener {
                     section = code
@@ -72,7 +87,7 @@ class HomeActivity : AppCompatActivity() {
         })
         actions.addView(MaterialButton(this).apply { text = "Refresh"; setOnClickListener { refresh() } })
         root.addView(actions)
-        status = TextView(this).apply { setPadding(0, dp(8), 0, dp(8)) }
+        status = TextView(this).apply { setTextColor(Color.WHITE); setPadding(0, dp(8), 0, dp(8)) }
         root.addView(status)
         grid = GridView(this).apply {
             numColumns = GridView.AUTO_FIT
@@ -91,9 +106,10 @@ class HomeActivity : AppCompatActivity() {
         root.addView(grid, LinearLayout.LayoutParams(-1, 0, 1f))
         root.addView(TextView(this).apply {
             text = "Box art: Libretro thumbnails · downloaded automatically and cached"
-            textSize = 11f
+            textSize = 11f; setTextColor(Color.LTGRAY)
         })
-        setContentView(root)
+        backdrop.addView(root, FrameLayout.LayoutParams(-1, -1))
+        setContentView(backdrop)
         refresh()
     }
 
@@ -173,10 +189,12 @@ class HomeActivity : AppCompatActivity() {
                 orientation = LinearLayout.VERTICAL
                 setPadding(dp(8), dp(8), dp(8), dp(8))
                 addView(ImageView(context).apply { scaleType = ImageView.ScaleType.FIT_CENTER }, LinearLayout.LayoutParams(-1, dp(145)))
-                addView(TextView(context).apply { gravity = Gravity.CENTER; maxLines = 2; textSize = 15f }, LinearLayout.LayoutParams(-1, dp(48)))
+                addView(TextView(context).apply { gravity = Gravity.CENTER; maxLines = 2; textSize = 15f; setTextColor(Color.WHITE) }, LinearLayout.LayoutParams(-1, dp(48)))
                 val value = android.util.TypedValue()
                 theme.resolveAttribute(android.R.attr.selectableItemBackground, value, true)
-                setBackgroundResource(value.resourceId)
+                // Keep the theme's pressed/focused feedback above the dark card surface.
+                setBackgroundColor(Color.argb(210, 20, 17, 29))
+                foreground = androidx.core.content.ContextCompat.getDrawable(context, value.resourceId)
             }
             val rom = games[position]
             val image = card.getChildAt(0) as ImageView
