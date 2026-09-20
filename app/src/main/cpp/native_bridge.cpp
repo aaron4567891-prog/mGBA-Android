@@ -245,4 +245,4 @@ Java_com_aaron_mgbaandroid_NativeBridge_clearCheats(JNIEnv*, jobject) {
 
 extern "C" JNIEXPORT jint JNICALL Java_com_aaron_mgbaandroid_NativeBridge_videoWidth(JNIEnv*, jobject) { return frameWidth; }
 extern "C" JNIEXPORT jint JNICALL Java_com_aaron_mgbaandroid_NativeBridge_videoHeight(JNIEnv*, jobject) { return frameHeight; }
-extern "C" JNIEXPORT jint JNICALL Java_com_aaron_mgbaandroid_NativeBridge_audioRate(JNIEnv*, jobject) { return sampleRate; }
+extern "C" JNIEXPORT jint JNICALL Java_com_aaron_mgbaandroid_NativeBridge_audioRate(JNIEnv*, jobject) { return core ? core->audioSampleRate(core) : sampleRate; }

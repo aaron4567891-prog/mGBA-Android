@@ -124,6 +124,15 @@ class MainActivity : AppCompatActivity(), Choreographer.FrameCallback {
             if (!fastForward && queuedSamples >= audioRate / 5) break
             val count = if (fastForward) prefs.getInt("ff_multiplier", 3).coerceIn(2, 8) else 1
             latestFrame = NativeBridge.runFrame(count)
+            val currentRate = NativeBridge.audioRate()
+            if (currentRate > 0 && currentRate != audioRate) {
+                android.util.Log.i("MgbaAudio", "Core audio rate changed: $audioRate -> $currentRate")
+                val savedDebt = frameDebtNanos
+                val savedTimestamp = previousFrameNanos
+                startAudio()
+                frameDebtNanos = savedDebt
+                previousFrameNanos = savedTimestamp
+            }
             val samples = NativeBridge.takeAudio()
             if (!fastForward && samples.isNotEmpty()) {
                 pendingAudio.addLast(samples)
