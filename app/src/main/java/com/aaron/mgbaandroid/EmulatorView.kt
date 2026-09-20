@@ -24,8 +24,11 @@ class EmulatorView(context: Context) : View(context) {
         canvas.drawColor(Color.BLACK)
         val image = bitmap ?: return
         val scale = minOf(width.toFloat() / image.width, height.toFloat() / image.height)
-        val drawWidth = image.width * scale
-        val drawHeight = image.height * scale
+        val prefs = context.getSharedPreferences("emulator", Context.MODE_PRIVATE)
+        paint.isFilterBitmap = prefs.getBoolean("video_smooth", true)
+        val stretch = prefs.getBoolean("video_stretch", false)
+        val drawWidth = if (stretch) width.toFloat() else image.width * scale
+        val drawHeight = if (stretch) height.toFloat() else image.height * scale
         val left = (width - drawWidth) / 2f
         val top = (height - drawHeight) / 2f
         canvas.drawBitmap(image, null, android.graphics.RectF(left, top, left + drawWidth, top + drawHeight), paint)

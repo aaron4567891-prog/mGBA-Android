@@ -61,6 +61,21 @@ class HomeActivity : AppCompatActivity() {
             setPadding(dp(20), dp(16), dp(20), dp(8))
         }
         root.addView(TextView(this).apply { text = "mGBA Android"; textSize = 28f; setTextColor(Color.WHITE) })
+        val settingsBar = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        for ((label, action) in listOf<Pair<String, () -> Unit>>(
+            "Settings" to { EmulatorSettings.general(this) },
+            "Video" to { EmulatorSettings.video(this) },
+            "Input" to { EmulatorSettings.input(this) })) {
+            settingsBar.addView(MaterialButton(this).apply {
+                text = label
+                minWidth = 0
+                setOnClickListener { action() }
+            })
+        }
+        root.addView(HorizontalScrollView(this).apply {
+            isHorizontalScrollBarEnabled = false
+            addView(settingsBar)
+        })
         section = prefs.getString("section", "gba").takeIf { it in listOf("gba", "gbc", "gb") } ?: "gba"
         val sections = RadioGroup(this).apply { orientation = RadioGroup.HORIZONTAL }
         for ((code, label) in listOf("gba" to "GBA", "gbc" to "Game Boy Color", "gb" to "Game Boy")) {

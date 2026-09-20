@@ -80,7 +80,15 @@ class MainActivity : AppCompatActivity(), Choreographer.FrameCallback {
         bar.addView(button("FF") { fastForward = !fastForward; toast(if (fastForward) "Fast-forward on" else "Fast-forward off") })
         bar.addView(button("Cheat") { showCheatDialog() })
         bar.addView(button("Settings") { showSettings() })
-        return bar
+        bar.addView(button("Video") { EmulatorSettings.video(this) { emulatorView.invalidate() } })
+        bar.addView(button("Input") {
+            for (id in 0..9) NativeBridge.setButton(id, false)
+            EmulatorSettings.input(this)
+        })
+        return android.widget.HorizontalScrollView(this).apply {
+            isHorizontalScrollBarEnabled = false
+            addView(bar)
+        }
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -232,19 +240,14 @@ class MainActivity : AppCompatActivity(), Choreographer.FrameCallback {
     }
 
     private fun showSettings() {
-        val speeds = arrayOf("2×", "3×", "4×", "6×", "8×")
-        val values = intArrayOf(2, 3, 4, 6, 8)
-        val selected = values.indexOf(prefs.getInt("ff_multiplier", 3)).coerceAtLeast(0)
-        AlertDialog.Builder(this).setTitle("Fast-forward speed").setSingleChoiceItems(speeds, selected) { dialog, which ->
-            prefs.edit().putInt("ff_multiplier", values[which]).apply(); dialog.dismiss()
-        }.setNegativeButton("Close", null).show()
+        EmulatorSettings.general(this)
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         if (event.device?.sources?.and(InputDevice.SOURCE_GAMEPAD) == 0) return super.dispatchKeyEvent(event)
         val id = when (event.keyCode) {
-            KeyEvent.KEYCODE_BUTTON_A -> 0
-            KeyEvent.KEYCODE_BUTTON_B -> 1
+            KeyEvent.KEYCODE_BUTTON_A -> if (prefs.getBoolean("input_swap_ab", false)) 1 else 0
+            KeyEvent.KEYCODE_BUTTON_B -> if (prefs.getBoolean("input_swap_ab", false)) 0 else 1
             KeyEvent.KEYCODE_BUTTON_SELECT -> 2
             KeyEvent.KEYCODE_BUTTON_START -> 3
             KeyEvent.KEYCODE_DPAD_UP -> 6
