@@ -7,7 +7,7 @@ import android.widget.TextView
 import androidx.appcompat.app.AlertDialog
 
 object Hotkeys {
-    private val names = arrayOf("Quick save (slot 1)", "Quick load (slot 1)", "Toggle fast-forward", "Exit App", "Pause / Resume", "Pause", "Play / Resume", "Close game (mGBA home)")
+    private val names = arrayOf("Quick save (slot 1)", "Quick load (slot 1)", "Toggle fast-forward", "Exit App", "Pause / Resume", "Pause", "Play / Resume", "Close game (mGBA home)", "Open menu")
     private val legacyCodes = intArrayOf(-1, K.KEYCODE_BUTTON_R1, K.KEYCODE_BUTTON_L1, K.KEYCODE_BUTTON_THUMBR, K.KEYCODE_BUTTON_START, K.KEYCODE_BUTTON_A, K.KEYCODE_BUTTON_B, K.KEYCODE_BUTTON_X, K.KEYCODE_BUTTON_Y)
     private fun prefs(context: Context) = context.getSharedPreferences("emulator", Context.MODE_PRIVATE)
     private fun binding(context: Context, action: Int): List<Int> {

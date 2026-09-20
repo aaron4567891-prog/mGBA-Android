@@ -67,6 +67,7 @@ class MainActivity : AppCompatActivity(), Choreographer.FrameCallback {
     private val hotkeys by lazy { Hotkeys.State(this, ::runHotkey) }
     private fun runHotkey(action: Int) {
         when (action) {
+            8 -> showGameMenu()
             4 -> setPaused(!pausedByUser)
             5 -> setPaused(true)
             6 -> setPaused(false)
@@ -330,6 +331,28 @@ class MainActivity : AppCompatActivity(), Choreographer.FrameCallback {
             .setPositiveButton("Enable") { _, _ -> NativeBridge.setCheat(0, true, input.text.toString()) }
             .setNeutralButton("Clear all") { _, _ -> NativeBridge.clearCheats() }
             .setNegativeButton("Cancel", null).show()
+    }
+
+    private fun showGameMenu() {
+        if (romKey == null || isFinishing) return
+        releaseButtons()
+        val items = arrayOf(if (pausedByUser) "Play / Resume" else "Pause", "Save states",
+            if (fastForward) "Fast-forward off" else "Fast-forward on", "Video", "Input", "Settings",
+            "Cheats", "Close game", "Exit App")
+        AlertDialog.Builder(this).setTitle("Game menu")
+            .setItems(items) { _, which ->
+                when (which) {
+                    0 -> setPaused(!pausedByUser)
+                    1 -> showStateMenu()
+                    2 -> runHotkey(2)
+                    3 -> EmulatorSettings.video(this) { emulatorView.invalidate() }
+                    4 -> EmulatorSettings.input(this) { releaseButtons(); refreshTouchControls() }
+                    5 -> showSettings()
+                    6 -> showCheatDialog()
+                    7 -> runHotkey(7)
+                    8 -> runHotkey(3)
+                }
+            }.setNegativeButton("Back to game", null).show()
     }
 
     private fun showSettings() {
