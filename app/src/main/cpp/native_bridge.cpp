@@ -1,3 +1,4 @@
+#include <mgba/flags.h>
 #include <jni.h>
 #include <algorithm>
 #include <cstdlib>
