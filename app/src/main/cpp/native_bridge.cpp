@@ -97,7 +97,7 @@ Java_com_aaron_mgbaandroid_NativeBridge_initialize(JNIEnv* env, jobject, jstring
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
-Java_com_aaron_mgbaandroid_NativeBridge_loadRom(JNIEnv* env, jobject, jbyteArray bytes, jstring) {
+Java_com_aaron_mgbaandroid_NativeBridge_loadRom(JNIEnv* env, jobject, jbyteArray bytes, jstring, jboolean skipBios) {
     closeCore();
     const jsize size = env->GetArrayLength(bytes);
     rom.resize(size);
@@ -131,6 +131,11 @@ Java_com_aaron_mgbaandroid_NativeBridge_loadRom(JNIEnv* env, jobject, jbyteArray
         return JNI_FALSE;
     }
 
+    core->opts.useBios = true;
+    core->opts.skipBios = skipBios == JNI_TRUE;
+    mCoreConfigSetValue(&core->config, "gba.bios", (systemDir + "/gba_bios.bin").c_str());
+    mCoreConfigSetValue(&core->config, "gb.bios", (systemDir + "/gb_bios.bin").c_str());
+    mCoreConfigSetValue(&core->config, "gbc.bios", (systemDir + "/gbc_bios.bin").c_str());
     core->baseVideoSize(core, &frameWidth, &frameHeight);
     sampleRate = core->audioSampleRate(core);
     core->reset(core);

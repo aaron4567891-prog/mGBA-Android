@@ -191,7 +191,7 @@ class MainActivity : AppCompatActivity(), Choreographer.FrameCallback {
             Choreographer.getInstance().removeFrameCallback(this)
             resetAudioQueue()
             romKey = null
-            if (!NativeBridge.loadRom(bytes, loaded.name)) error("mGBA rejected the extracted ROM")
+            if (!NativeBridge.loadRom(bytes, loaded.name, prefs.getBoolean("skip_bios_${RomArchive.extension(loaded.name)}", false))) error("mGBA rejected the extracted ROM")
             romKey = MessageDigest.getInstance("SHA-256").digest(bytes).take(12).joinToString("") { "%02x".format(it) }
             restoreBatterySave()
             startAudio()

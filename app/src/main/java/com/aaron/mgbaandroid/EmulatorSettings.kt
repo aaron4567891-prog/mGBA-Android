@@ -47,6 +47,16 @@ object EmulatorSettings {
     }
 
     fun general(context: Context) {
+        AlertDialog.Builder(context).setTitle("Settings")
+            .setItems(arrayOf("Fast-forward speed", "BIOS")) { _, which ->
+                when (which) {
+                    0 -> fastForward(context)
+                    1 -> context.startActivity(android.content.Intent(context, BiosActivity::class.java))
+                }
+            }.setNegativeButton("Close", null).show()
+    }
+
+    private fun fastForward(context: Context) {
         val prefs = context.getSharedPreferences("emulator", Context.MODE_PRIVATE)
         val values = intArrayOf(2, 3, 4, 6, 8)
         AlertDialog.Builder(context).setTitle("Fast-forward speed")

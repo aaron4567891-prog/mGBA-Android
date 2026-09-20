@@ -8,6 +8,7 @@
         android:roundIcon="@mipmap/ic_launcher"
         android:label="mGBA Android"
         android:theme="@style/Theme.MgbaAndroid">
+        <activity android:name=".BiosActivity" android:exported="false" />
         <activity android:name=".HomeActivity" android:exported="true" android:launchMode="singleTop">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
