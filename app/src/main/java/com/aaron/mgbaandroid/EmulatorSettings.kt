@@ -48,12 +48,27 @@ object EmulatorSettings {
 
     fun general(context: Context) {
         AlertDialog.Builder(context).setTitle("Settings")
-            .setItems(arrayOf("Fast-forward speed", "BIOS")) { _, which ->
+            .setItems(arrayOf("Fast-forward speed", "BIOS", "In-game menu")) { _, which ->
                 when (which) {
+                    2 -> menuVisibility(context)
                     0 -> fastForward(context)
                     1 -> context.startActivity(android.content.Intent(context, BiosActivity::class.java))
                 }
             }.setNegativeButton("Close", null).show()
+    }
+
+    private fun menuVisibility(context: Context) {
+        val prefs = context.getSharedPreferences("emulator", Context.MODE_PRIVATE)
+        AlertDialog.Builder(context).setTitle("In-game menu")
+            .setMultiChoiceItems(arrayOf("Show in-game menu"),
+                booleanArrayOf(prefs.getBoolean("show_game_menu", true))) { _, _, show ->
+                prefs.edit().putBoolean("show_game_menu", show).apply()
+            }
+            .setNeutralButton("Help") { _, _ ->
+                AlertDialog.Builder(context).setTitle("Hidden menu")
+                    .setMessage("This hides only the top menu during games. Touch controls stay as configured. To show the menu again, open Settings from the mGBA home screen and turn Show in-game menu on.")
+                    .setPositiveButton("Done", null).show()
+            }.setPositiveButton("Done", null).show()
     }
 
     private fun fastForward(context: Context) {

@@ -22,6 +22,13 @@ import java.security.MessageDigest
 
 class MainActivity : AppCompatActivity(), Choreographer.FrameCallback {
     private lateinit var emulatorView: EmulatorView
+    private var gameToolbar: View? = null
+    private val menuPreferenceListener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+        if (key == "show_game_menu") updateMenuVisibility()
+    }
+    private fun updateMenuVisibility() {
+        gameToolbar?.visibility = if (prefs.getBoolean("show_game_menu", true)) View.VISIBLE else View.GONE
+    }
     private var touchControls: TouchControls? = null
     private var touchHeld = emptySet<Int>()
     private var stickHeld = emptySet<Int>()
@@ -130,7 +137,10 @@ class MainActivity : AppCompatActivity(), Choreographer.FrameCallback {
         touchControls = TouchControls(this) { held -> touchHeld = held; sendButtons() }
         root.addView(touchControls, FrameLayout.LayoutParams(-1, -1))
         refreshTouchControls()
-        root.addView(buildToolbar(), FrameLayout.LayoutParams(-2, -2).apply { gravity = android.view.Gravity.TOP or android.view.Gravity.END })
+        gameToolbar = buildToolbar()
+        prefs.registerOnSharedPreferenceChangeListener(menuPreferenceListener)
+        updateMenuVisibility()
+        root.addView(gameToolbar, FrameLayout.LayoutParams(-2, -2).apply { gravity = android.view.Gravity.TOP or android.view.Gravity.END })
         setContentView(root)
 
         intent?.data?.let(::openRom)
@@ -369,6 +379,7 @@ class MainActivity : AppCompatActivity(), Choreographer.FrameCallback {
 
     override fun onResume() {
         super.onResume()
+        updateMenuVisibility()
         if (running) {
             refreshTouchControls()
             previousFrameNanos = 0L
@@ -377,6 +388,7 @@ class MainActivity : AppCompatActivity(), Choreographer.FrameCallback {
         }
     }
     override fun onDestroy() {
+        prefs.unregisterOnSharedPreferenceChangeListener(menuPreferenceListener)
         running = false
         Choreographer.getInstance().removeFrameCallback(this)
         persistBatterySave()
