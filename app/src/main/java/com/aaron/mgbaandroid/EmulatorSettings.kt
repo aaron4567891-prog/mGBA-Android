@@ -61,12 +61,12 @@ object EmulatorSettings {
     private fun dualScreen(context: Context) {
         val prefs = context.getSharedPreferences("emulator", Context.MODE_PRIVATE)
         AlertDialog.Builder(context).setTitle("Dual screen")
-            .setMultiChoiceItems(arrayOf("Game on second display"),
+            .setMultiChoiceItems(arrayOf("Bottom-screen controls (game stays on top)"),
                 booleanArrayOf(prefs.getBoolean("dual_screen", false))) { _, _, enabled ->
                 prefs.edit().putBoolean("dual_screen", enabled).apply()
             }.setNeutralButton("Help") { _, _ ->
                 AlertDialog.Builder(context).setTitle("Dual screen")
-                    .setMessage("Open mGBA on the bottom screen for controls and menus; the game appears on the other available display. Enable touch controls in Input if needed. Without a second display, the game stays on this screen.")
+                    .setMessage("Open mGBA on the top screen. The game and physical controller input stay there; touch controls and a Menu button appear on the second display. Menu dialogs open on the game screen. Enable touch controls in Input if needed. Without a second display, controls stay on the game screen.")
                     .setPositiveButton("Done", null).show()
             }.setPositiveButton("Done", null).show()
     }

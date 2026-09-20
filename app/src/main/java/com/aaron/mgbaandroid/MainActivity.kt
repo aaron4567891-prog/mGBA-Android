@@ -38,7 +38,11 @@ class MainActivity : AppCompatActivity(), Choreographer.FrameCallback {
         val old = presentation
         presentation = null
         old?.setOnDismissListener(null)
+        old?.releaseControls()
         old?.dismiss()
+        secondaryTouchHeld = emptySet()
+        refreshTouchControls()
+        updateMenuVisibility()
         if (::emulatorView.isInitialized) {
             emulatorView.visibility = View.VISIBLE
             latestPixels?.let { emulatorView.submitFrame(it, latestWidth, latestHeight) }
@@ -53,19 +57,23 @@ class MainActivity : AppCompatActivity(), Choreographer.FrameCallback {
         if (target == null) { closePresentation(); return }
         if (presentation?.display?.displayId == target.displayId && presentation?.isShowing == true) return
         closePresentation()
-        val next = GamePresentation(this, target)
+        val next = GamePresentation(this, target, { held -> secondaryTouchHeld = held; sendButtons() }, { showGameMenu() })
         try {
             next.show()
             presentation = next
             next.setOnDismissListener {
                 if (presentation === next) {
+                    next.releaseControls()
                     presentation = null
+                    secondaryTouchHeld = emptySet()
+                    refreshTouchControls()
+                    updateMenuVisibility()
                     emulatorView.visibility = View.VISIBLE
                     latestPixels?.let { emulatorView.submitFrame(it, latestWidth, latestHeight) }
                 }
             }
-            latestPixels?.let { next.frame(it, latestWidth, latestHeight) }
-            emulatorView.visibility = View.INVISIBLE
+            refreshTouchControls()
+            updateMenuVisibility()
         } catch (_: android.view.WindowManager.InvalidDisplayException) {
             closePresentation()
             toast("Second display unavailable; using the main screen")
@@ -74,17 +82,19 @@ class MainActivity : AppCompatActivity(), Choreographer.FrameCallback {
     private val menuPreferenceListener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
         if (key == "show_game_menu") updateMenuVisibility()
         if (key == "dual_screen") updateDualScreen()
+        if (key == "touch_controls") refreshTouchControls()
     }
     private fun updateMenuVisibility() {
-        gameToolbar?.visibility = if (prefs.getBoolean("show_game_menu", true)) View.VISIBLE else View.GONE
+        gameToolbar?.visibility = if (presentation == null && prefs.getBoolean("show_game_menu", true)) View.VISIBLE else View.GONE
     }
     private var touchControls: TouchControls? = null
     private var touchHeld = emptySet<Int>()
+    private var secondaryTouchHeld = emptySet<Int>()
     private var stickHeld = emptySet<Int>()
     private val stickState by lazy { StickBindings.State(this) }
     private val buttonState by lazy { ButtonBindings.State(this) }
     private fun sendButtons() {
-        for (id in 0..9) NativeBridge.setButton(id, id in touchHeld || id in buttonState.held() || id in stickHeld)
+        for (id in 0..9) NativeBridge.setButton(id, id in touchHeld || id in secondaryTouchHeld || id in buttonState.held() || id in stickHeld)
     }
     private fun releaseButtons() {
         buttonState.clear()
@@ -92,12 +102,16 @@ class MainActivity : AppCompatActivity(), Choreographer.FrameCallback {
         stickHeld = emptySet()
         stickState.clear()
         touchControls?.release()
+        presentation?.releaseControls()
+        secondaryTouchHeld = emptySet()
         touchHeld = emptySet()
         sendButtons()
     }
     private fun refreshTouchControls() {
         touchControls?.release()
-        touchControls?.visibility = if (prefs.getBoolean("touch_controls", true)) View.VISIBLE else View.GONE
+        val enabled = prefs.getBoolean("touch_controls", true)
+        touchControls?.visibility = if (enabled && presentation == null) View.VISIBLE else View.GONE
+        presentation?.setControlsEnabled(enabled)
     }
     private var pausedByUser = false
     private fun setPaused(paused: Boolean) {
@@ -107,6 +121,8 @@ class MainActivity : AppCompatActivity(), Choreographer.FrameCallback {
         frameDebtNanos = 0.0
         buttonState.clear()
         touchControls?.release()
+        presentation?.releaseControls()
+        secondaryTouchHeld = emptySet()
         touchHeld = emptySet()
         stickHeld = emptySet()
         stickState.clear()
@@ -308,9 +324,7 @@ class MainActivity : AppCompatActivity(), Choreographer.FrameCallback {
             latestPixels = it
             latestWidth = NativeBridge.videoWidth()
             latestHeight = NativeBridge.videoHeight()
-            val external = presentation
-            if (external != null) external.frame(it, latestWidth, latestHeight)
-            else emulatorView.submitFrame(it, latestWidth, latestHeight)
+            emulatorView.submitFrame(it, latestWidth, latestHeight)
         }
         Choreographer.getInstance().postFrameCallback(this)
     }
