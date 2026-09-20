@@ -31,3 +31,9 @@ target_include_directories(mgba_android PRIVATE
     ${CMAKE_CURRENT_BINARY_DIR}/mgba/include
 )
 target_link_libraries(mgba_android PRIVATE mgba android log)
+
+# mCore has fields guarded by build definitions such as ENABLE_DIRECTORIES.
+# Use the core target's actual definitions; flags.h does not capture all of them.
+target_compile_definitions(mgba_android PRIVATE
+    $<TARGET_PROPERTY:mgba,COMPILE_DEFINITIONS>
+)
