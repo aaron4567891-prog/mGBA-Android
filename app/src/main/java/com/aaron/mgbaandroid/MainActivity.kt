@@ -22,6 +22,26 @@ import java.security.MessageDigest
 
 class MainActivity : AppCompatActivity(), Choreographer.FrameCallback {
     private lateinit var emulatorView: EmulatorView
+    private var touchControls: TouchControls? = null
+    private var touchHeld = emptySet<Int>()
+    private var stickHeld = emptySet<Int>()
+    private val stickState by lazy { StickBindings.State(this) }
+    private val buttonState by lazy { ButtonBindings.State(this) }
+    private fun sendButtons() {
+        for (id in 0..9) NativeBridge.setButton(id, id in touchHeld || id in buttonState.held() || id in stickHeld)
+    }
+    private fun releaseButtons() {
+        buttonState.clear()
+        stickHeld = emptySet()
+        stickState.clear()
+        touchControls?.release()
+        touchHeld = emptySet()
+        sendButtons()
+    }
+    private fun refreshTouchControls() {
+        touchControls?.release()
+        touchControls?.visibility = if (prefs.getBoolean("touch_controls", true)) View.VISIBLE else View.GONE
+    }
     private var running = false
     private var fastForward = false
     private var romKey: String? = null
@@ -55,6 +75,9 @@ class MainActivity : AppCompatActivity(), Choreographer.FrameCallback {
         emulatorView = EmulatorView(this)
         val root = FrameLayout(this)
         root.addView(emulatorView, FrameLayout.LayoutParams(-1, -1))
+        touchControls = TouchControls(this) { held -> touchHeld = held; sendButtons() }
+        root.addView(touchControls, FrameLayout.LayoutParams(-1, -1))
+        refreshTouchControls()
         root.addView(buildToolbar(), FrameLayout.LayoutParams(-2, -2).apply { gravity = android.view.Gravity.TOP or android.view.Gravity.END })
         setContentView(root)
 
@@ -82,8 +105,8 @@ class MainActivity : AppCompatActivity(), Choreographer.FrameCallback {
         bar.addView(button("Settings") { showSettings() })
         bar.addView(button("Video") { EmulatorSettings.video(this) { emulatorView.invalidate() } })
         bar.addView(button("Input") {
-            for (id in 0..9) NativeBridge.setButton(id, false)
-            EmulatorSettings.input(this)
+            releaseButtons()
+            EmulatorSettings.input(this) { releaseButtons(); refreshTouchControls() }
         })
         return android.widget.HorizontalScrollView(this).apply {
             isHorizontalScrollBarEnabled = false
@@ -99,6 +122,7 @@ class MainActivity : AppCompatActivity(), Choreographer.FrameCallback {
 
     private fun openRom(uri: Uri) {
         runCatching {
+            releaseButtons()
             persistBatterySave()
             val displayName = runCatching {
                 contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use {
@@ -243,23 +267,29 @@ class MainActivity : AppCompatActivity(), Choreographer.FrameCallback {
         EmulatorSettings.general(this)
     }
 
-    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
-        if (event.device?.sources?.and(InputDevice.SOURCE_GAMEPAD) == 0) return super.dispatchKeyEvent(event)
-        val id = when (event.keyCode) {
-            KeyEvent.KEYCODE_BUTTON_A -> if (prefs.getBoolean("input_swap_ab", false)) 1 else 0
-            KeyEvent.KEYCODE_BUTTON_B -> if (prefs.getBoolean("input_swap_ab", false)) 0 else 1
-            KeyEvent.KEYCODE_BUTTON_SELECT -> 2
-            KeyEvent.KEYCODE_BUTTON_START -> 3
-            KeyEvent.KEYCODE_DPAD_UP -> 6
-            KeyEvent.KEYCODE_DPAD_DOWN -> 7
-            KeyEvent.KEYCODE_DPAD_LEFT -> 5
-            KeyEvent.KEYCODE_DPAD_RIGHT -> 4
-            KeyEvent.KEYCODE_BUTTON_L1 -> 9
-            KeyEvent.KEYCODE_BUTTON_R1 -> 8
-            else -> -1
+    override fun onGenericMotionEvent(event: android.view.MotionEvent): Boolean {
+        if (event.isFromSource(InputDevice.SOURCE_JOYSTICK) &&
+            event.actionMasked == android.view.MotionEvent.ACTION_MOVE && romKey != null) {
+            stickHeld = stickState.read(event)
+            buttonState.motion(event)
+            sendButtons()
+            return true
         }
-        if (id < 0) return super.dispatchKeyEvent(event)
-        NativeBridge.setButton(id, event.action == KeyEvent.ACTION_DOWN)
+        return super.onGenericMotionEvent(event)
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (!hasFocus && romKey != null) releaseButtons()
+    }
+
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        val sources = event.device?.sources ?: 0
+        val controller = (sources and InputDevice.SOURCE_GAMEPAD) == InputDevice.SOURCE_GAMEPAD ||
+            (sources and InputDevice.SOURCE_JOYSTICK) == InputDevice.SOURCE_JOYSTICK
+        if (!controller || romKey == null || !ButtonBindings.supports(event.keyCode)) return super.dispatchKeyEvent(event)
+        buttonState.key(event)
+        sendButtons()
         return true
     }
 
@@ -270,6 +300,7 @@ class MainActivity : AppCompatActivity(), Choreographer.FrameCallback {
     private fun toast(message: String) = Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
 
     override fun onPause() {
+        if (romKey != null) releaseButtons()
         Choreographer.getInstance().removeFrameCallback(this)
         resetAudioQueue()
         persistBatterySave()
@@ -279,6 +310,7 @@ class MainActivity : AppCompatActivity(), Choreographer.FrameCallback {
     override fun onResume() {
         super.onResume()
         if (running) {
+            refreshTouchControls()
             previousFrameNanos = 0L
             Choreographer.getInstance().removeFrameCallback(this)
             Choreographer.getInstance().postFrameCallback(this)

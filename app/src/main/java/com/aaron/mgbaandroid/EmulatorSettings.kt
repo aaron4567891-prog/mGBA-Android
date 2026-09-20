@@ -16,18 +16,33 @@ object EmulatorSettings {
             }.setPositiveButton("Done", null).show()
     }
 
-    fun input(context: Context) {
+    fun input(context: Context, changed: () -> Unit = {}) {
         val prefs = context.getSharedPreferences("emulator", Context.MODE_PRIVATE)
         AlertDialog.Builder(context).setTitle("Input")
-            .setMultiChoiceItems(arrayOf("Swap controller A and B"),
-                booleanArrayOf(prefs.getBoolean("input_swap_ab", false))) { _, _, enabled ->
-                prefs.edit().putBoolean("input_swap_ab", enabled).apply()
+            .setMultiChoiceItems(arrayOf("Swap default controller A and B", "Show touch controls"),
+                booleanArrayOf(prefs.getBoolean("input_swap_ab", false), prefs.getBoolean("touch_controls", true))) { _, index, enabled ->
+                prefs.edit().putBoolean(if (index == 0) "input_swap_ab" else "touch_controls", enabled).apply()
+                changed()
             }
-            .setNeutralButton("Button guide") { _, _ ->
-                AlertDialog.Builder(context).setTitle("Controller buttons")
-                    .setMessage("D-pad: directions\nA / B: A / B (or swapped)\nStart: Start\nSelect: Select\nL1 / R1: L / R\n\nUses Android's controller button labels. Stick mapping is not included yet.")
-                    .setPositiveButton("Done", null).show()
+            .setNeutralButton("Controller mapping") { _, _ ->
+                controllerMapping(context, changed)
             }.setPositiveButton("Done", null).show()
+    }
+
+    private fun controllerMapping(context: Context, changed: () -> Unit) {
+        AlertDialog.Builder(context).setTitle("Controller mapping")
+            .setItems(arrayOf("Auto-map", "Thumbstick bindings", "Button bindings", "Button guide")) { _, item ->
+                when (item) {
+                    0 -> { StickBindings.autoMap(context); ButtonBindings.reset(context); changed(); android.widget.Toast.makeText(context, "Standard controller mapping applied", android.widget.Toast.LENGTH_SHORT).show() }
+                    1 -> StickBindings.show(context)
+                    2 -> ButtonBindings.show(context)
+                    else -> {
+                AlertDialog.Builder(context).setTitle("Controller buttons")
+                    .setMessage("Auto-map defaults:\nD-pad: directions\nA / B: A / B\nStart / Select: Start / Select\nL1 / R1: L / R\nOther buttons: unbound\n\nCustom Button bindings override the default A/B swap.\n\nUses Android's controller button labels. Left stick defaults to directions. Right stick defaults to unbound. Use Thumbstick bindings to change each direction.")
+                    .setPositiveButton("Done", null).show()
+                    }
+                }
+            }.setNegativeButton("Close", null).show()
     }
 
     fun general(context: Context) {
