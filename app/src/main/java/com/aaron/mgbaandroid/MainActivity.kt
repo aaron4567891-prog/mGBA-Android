@@ -376,6 +376,10 @@ class MainActivity : AppCompatActivity(), Choreographer.FrameCallback {
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (romKey != null && Hotkeys.isReturnKey(event.keyCode)) {
+            if (hotkeys.handle(event)) return true
+            return super.dispatchKeyEvent(event)
+        }
         val sources = event.device?.sources ?: 0
         val controller = (sources and InputDevice.SOURCE_GAMEPAD) == InputDevice.SOURCE_GAMEPAD ||
             (sources and InputDevice.SOURCE_JOYSTICK) == InputDevice.SOURCE_JOYSTICK

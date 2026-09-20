@@ -7,6 +7,9 @@ import android.widget.TextView
 import androidx.appcompat.app.AlertDialog
 
 object Hotkeys {
+    // Handheld Return/Back buttons often identify as keyboard or system keys.
+    fun isReturnKey(code: Int) = code == K.KEYCODE_BACK || code == K.KEYCODE_ESCAPE ||
+        code == K.KEYCODE_ENTER || code == K.KEYCODE_NUMPAD_ENTER
     private val names = arrayOf("Quick save (slot 1)", "Quick load (slot 1)", "Toggle fast-forward", "Exit App", "Pause / Resume", "Pause", "Play / Resume", "Close game (mGBA home)", "Open menu")
     private val legacyCodes = intArrayOf(-1, K.KEYCODE_BUTTON_R1, K.KEYCODE_BUTTON_L1, K.KEYCODE_BUTTON_THUMBR, K.KEYCODE_BUTTON_START, K.KEYCODE_BUTTON_A, K.KEYCODE_BUTTON_B, K.KEYCODE_BUTTON_X, K.KEYCODE_BUTTON_Y)
     private fun prefs(context: Context) = context.getSharedPreferences("emulator", Context.MODE_PRIVATE)
@@ -37,17 +40,26 @@ object Hotkeys {
         val captured = mutableListOf<Int>()
         val info = TextView(context).apply {
             setPadding(32, 24, 32, 24)
-            text = "Press one controller button, or hold one and press a second, then choose Save.\nThe first button is reserved for this shortcut. Digital buttons only; stick directions and axis-only triggers are not supported."
+            text = "Press one controller button, or hold one and press a second, then choose Save. Return/Back can also be mapped; press B or tap Cancel to leave. B is reserved for cancel on this screen.\nThe first button is reserved for this shortcut. Digital buttons only; stick directions and axis-only triggers are not supported."
         }
         val dialog = AlertDialog.Builder(context).setTitle(names[action]).setView(info)
             .setPositiveButton("Save") { _, _ -> save(context, action, captured); show(context) }
             .setNeutralButton("Disable") { _, _ -> save(context, action, emptyList()); show(context) }
             .setNegativeButton("Cancel") { _, _ -> show(context) }.create()
+        dialog.setCancelable(false)
+        dialog.setCanceledOnTouchOutside(false)
         dialog.setOnKeyListener { _, code, event ->
+            if (code == K.KEYCODE_BUTTON_B) {
+                if (event.action == K.ACTION_UP && !event.isCanceled) {
+                    dialog.dismiss()
+                    show(context)
+                }
+                return@setOnKeyListener true
+            }
             val sources = event.device?.sources ?: 0
             val controller = (sources and InputDevice.SOURCE_GAMEPAD) == InputDevice.SOURCE_GAMEPAD ||
                 (sources and InputDevice.SOURCE_JOYSTICK) == InputDevice.SOURCE_JOYSTICK
-            if (!controller || !ButtonBindings.supports(code)) false else {
+            if (!isReturnKey(code) && (!controller || !ButtonBindings.supports(code))) false else {
                 if (event.action == K.ACTION_DOWN && event.repeatCount == 0 && code !in captured && captured.size < 2) {
                     captured.add(code)
                     info.text = "Selected: ${label(captured)}\nChoose Save using the touchscreen. Cancel to try again."
@@ -62,12 +74,17 @@ object Hotkeys {
     class State(private val context: Context, private val run: (Int) -> Unit) {
         private val held = mutableSetOf<Pair<Int, Int>>()
         private val consumed = mutableSetOf<Pair<Int, Int>>()
-        fun clear() { held.clear(); consumed.clear() }
+        private val pendingReturn = mutableMapOf<Pair<Int, Int>, Int>()
+        fun clear() { held.clear(); consumed.clear(); pendingReturn.clear() }
         fun handle(event: K): Boolean {
             val key = event.deviceId to event.keyCode
             if (event.action == K.ACTION_UP) {
                 held.remove(key)
-                return consumed.remove(key)
+                val wasConsumed = consumed.remove(key)
+                val pending = pendingReturn.remove(key)
+                // Run after release so Back-up cannot dismiss the new action dialog.
+                if (pending != null && !event.isCanceled) run(pending)
+                return wasConsumed
             }
             if (event.action != K.ACTION_DOWN) return false
             if (event.repeatCount > 0) return key in consumed
@@ -78,7 +95,7 @@ object Hotkeys {
             }?.key
             if (action != null) {
                 consumed.add(key)
-                run(action)
+                if (isReturnKey(event.keyCode)) pendingReturn[key] = action else run(action)
                 return true
             }
             if (bindings.values.any { it.firstOrNull() == event.keyCode }) {
