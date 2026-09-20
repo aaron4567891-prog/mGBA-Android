@@ -27,6 +27,16 @@ class MainActivity : AppCompatActivity(), Choreographer.FrameCallback {
     private var fastForward = false
     private var romKey: String? = null
     private var audioTrack: AudioTrack? = null
+    // GBA and GB both run at approximately 59.7275 frames per second.
+    private val framePeriodNanos = 1_000_000_000.0 * 280896.0 / 16777216.0
+    private var previousFrameNanos = 0L
+    private var frameDebtNanos = 0.0
+    private val pendingAudio = java.util.ArrayDeque<ShortArray>()
+    private var pendingOffset = 0
+    private var queuedSamples = 0
+    private var primedSamples = 0
+    private var audioRate = 32768
+    private var wasFastForward = false
     private val prefs by lazy { getSharedPreferences("emulator", MODE_PRIVATE) }
 
     private val picker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -97,25 +107,87 @@ class MainActivity : AppCompatActivity(), Choreographer.FrameCallback {
 
     override fun doFrame(frameTimeNanos: Long) {
         if (!running) return
-        val frames = if (fastForward) prefs.getInt("ff_multiplier", 3).coerceIn(2, 8) else 1
-        NativeBridge.runFrame(frames)?.let {
+        if (fastForward != wasFastForward) {
+            resetAudioQueue()
+            wasFastForward = fastForward
+            previousFrameNanos = 0L
+        }
+        val elapsed = if (previousFrameNanos == 0L) framePeriodNanos else
+            (frameTimeNanos - previousFrameNanos).toDouble().coerceIn(0.0, framePeriodNanos * 4)
+        previousFrameNanos = frameTimeNanos
+        frameDebtNanos = (frameDebtNanos + elapsed).coerceAtMost(framePeriodNanos * 4)
+        pumpAudio()
+        var latestFrame: IntArray? = null
+        var steps = 0
+        while (frameDebtNanos >= framePeriodNanos && steps < 4) {
+            // Keep a bounded backlog if the audio device temporarily stops accepting data.
+            if (!fastForward && queuedSamples >= audioRate / 5) break
+            val count = if (fastForward) prefs.getInt("ff_multiplier", 3).coerceIn(2, 8) else 1
+            latestFrame = NativeBridge.runFrame(count)
+            val samples = NativeBridge.takeAudio()
+            if (!fastForward && samples.isNotEmpty()) {
+                pendingAudio.addLast(samples)
+                queuedSamples += samples.size
+                pumpAudio()
+            }
+            frameDebtNanos -= framePeriodNanos
+            steps++
+        }
+        latestFrame?.let {
             emulatorView.submitFrame(it, NativeBridge.videoWidth(), NativeBridge.videoHeight())
         }
-        val audio = NativeBridge.takeAudio()
-        if (!fastForward && audio.isNotEmpty()) audioTrack?.write(audio, 0, audio.size, AudioTrack.WRITE_NON_BLOCKING)
         Choreographer.getInstance().postFrameCallback(this)
+    }
+
+    private fun pumpAudio() {
+        val track = audioTrack ?: return
+        while (pendingAudio.isNotEmpty()) {
+            val samples = pendingAudio.peekFirst() ?: break
+            val written = track.write(samples, pendingOffset, samples.size - pendingOffset, AudioTrack.WRITE_NON_BLOCKING)
+            if (written < 0) {
+                running = false
+                toast("Audio output failed ($written). Reopen the ROM.")
+                return
+            }
+            if (written == 0) break
+            pendingOffset += written
+            queuedSamples -= written
+            primedSamples += written
+            // Start with about 50 ms queued instead of playing an empty buffer.
+            if (track.playState != AudioTrack.PLAYSTATE_PLAYING && primedSamples >= audioRate / 10) {
+                track.play()
+            }
+            if (pendingOffset == samples.size) {
+                pendingAudio.removeFirst()
+                pendingOffset = 0
+            }
+        }
+    }
+
+    private fun resetAudioQueue() {
+        audioTrack?.pause()
+        audioTrack?.flush()
+        pendingAudio.clear()
+        pendingOffset = 0
+        queuedSamples = 0
+        primedSamples = 0
+        previousFrameNanos = 0L
+        frameDebtNanos = 0.0
     }
 
     private fun startAudio() {
         audioTrack?.release()
-        val rate = NativeBridge.audioRate().takeIf { it > 0 } ?: 32768
-        val minimum = AudioTrack.getMinBufferSize(rate, AudioFormat.CHANNEL_OUT_STEREO, AudioFormat.ENCODING_PCM_16BIT)
+        audioTrack = null
+        audioRate = NativeBridge.audioRate().takeIf { it > 0 } ?: 32768
+        val minimum = AudioTrack.getMinBufferSize(audioRate, AudioFormat.CHANNEL_OUT_STEREO, AudioFormat.ENCODING_PCM_16BIT)
         audioTrack = AudioTrack.Builder()
             .setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_GAME).setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).build())
-            .setAudioFormat(AudioFormat.Builder().setEncoding(AudioFormat.ENCODING_PCM_16BIT).setSampleRate(rate).setChannelMask(AudioFormat.CHANNEL_OUT_STEREO).build())
-            .setBufferSizeInBytes(maxOf(minimum, rate / 4 * 4))
+            .setAudioFormat(AudioFormat.Builder().setEncoding(AudioFormat.ENCODING_PCM_16BIT).setSampleRate(audioRate).setChannelMask(AudioFormat.CHANNEL_OUT_STEREO).build())
+            .setBufferSizeInBytes(maxOf(minimum, audioRate / 10 * 4))
             .setTransferMode(AudioTrack.MODE_STREAM)
-            .build().also { it.play() }
+            .build()
+        resetAudioQueue()
+        wasFastForward = fastForward
     }
 
     private fun showStateMenu() {
@@ -175,7 +247,21 @@ class MainActivity : AppCompatActivity(), Choreographer.FrameCallback {
     private fun persistBatterySave() { if (romKey != null) NativeBridge.readSaveRam().takeIf { it.isNotEmpty() }?.let { saveFile().writeBytes(it) } }
     private fun toast(message: String) = Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
 
-    override fun onPause() { persistBatterySave(); super.onPause() }
+    override fun onPause() {
+        Choreographer.getInstance().removeFrameCallback(this)
+        resetAudioQueue()
+        persistBatterySave()
+        super.onPause()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (running) {
+            previousFrameNanos = 0L
+            Choreographer.getInstance().removeFrameCallback(this)
+            Choreographer.getInstance().postFrameCallback(this)
+        }
+    }
     override fun onDestroy() {
         running = false
         Choreographer.getInstance().removeFrameCallback(this)
