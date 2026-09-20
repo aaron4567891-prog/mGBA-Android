@@ -48,13 +48,27 @@ object EmulatorSettings {
 
     fun general(context: Context) {
         AlertDialog.Builder(context).setTitle("Settings")
-            .setItems(arrayOf("Fast-forward speed", "BIOS", "In-game menu")) { _, which ->
+            .setItems(arrayOf("Fast-forward speed", "BIOS", "In-game menu", "Dual screen")) { _, which ->
                 when (which) {
+                    3 -> dualScreen(context)
                     2 -> menuVisibility(context)
                     0 -> fastForward(context)
                     1 -> context.startActivity(android.content.Intent(context, BiosActivity::class.java))
                 }
             }.setNegativeButton("Close", null).show()
+    }
+
+    private fun dualScreen(context: Context) {
+        val prefs = context.getSharedPreferences("emulator", Context.MODE_PRIVATE)
+        AlertDialog.Builder(context).setTitle("Dual screen")
+            .setMultiChoiceItems(arrayOf("Game on second display"),
+                booleanArrayOf(prefs.getBoolean("dual_screen", false))) { _, _, enabled ->
+                prefs.edit().putBoolean("dual_screen", enabled).apply()
+            }.setNeutralButton("Help") { _, _ ->
+                AlertDialog.Builder(context).setTitle("Dual screen")
+                    .setMessage("Open mGBA on the bottom screen for controls and menus; the game appears on the other available display. Enable touch controls in Input if needed. Without a second display, the game stays on this screen.")
+                    .setPositiveButton("Done", null).show()
+            }.setPositiveButton("Done", null).show()
     }
 
     private fun menuVisibility(context: Context) {

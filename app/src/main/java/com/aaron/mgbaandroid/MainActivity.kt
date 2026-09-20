@@ -23,8 +23,57 @@ import java.security.MessageDigest
 class MainActivity : AppCompatActivity(), Choreographer.FrameCallback {
     private lateinit var emulatorView: EmulatorView
     private var gameToolbar: View? = null
+    private var presentation: GamePresentation? = null
+    private var foreground = false
+    private var latestPixels: IntArray? = null
+    private var latestWidth = 0
+    private var latestHeight = 0
+    private val displayManager by lazy { getSystemService(android.hardware.display.DisplayManager::class.java) }
+    private val displayListener = object : android.hardware.display.DisplayManager.DisplayListener {
+        override fun onDisplayAdded(displayId: Int) { updateDualScreen() }
+        override fun onDisplayRemoved(displayId: Int) { updateDualScreen() }
+        override fun onDisplayChanged(displayId: Int) { updateDualScreen() }
+    }
+    private fun closePresentation() {
+        val old = presentation
+        presentation = null
+        old?.setOnDismissListener(null)
+        old?.dismiss()
+        if (::emulatorView.isInitialized) {
+            emulatorView.visibility = View.VISIBLE
+            latestPixels?.let { emulatorView.submitFrame(it, latestWidth, latestHeight) }
+        }
+    }
+    private fun updateDualScreen() {
+        if (!::emulatorView.isInitialized) return
+        val ownDisplay = window.decorView.display?.displayId ?: android.view.Display.DEFAULT_DISPLAY
+        val target = if (foreground && prefs.getBoolean("dual_screen", false))
+            displayManager.getDisplays(android.hardware.display.DisplayManager.DISPLAY_CATEGORY_PRESENTATION)
+                .firstOrNull { it.displayId != ownDisplay && it.isValid } else null
+        if (target == null) { closePresentation(); return }
+        if (presentation?.display?.displayId == target.displayId && presentation?.isShowing == true) return
+        closePresentation()
+        val next = GamePresentation(this, target)
+        try {
+            next.show()
+            presentation = next
+            next.setOnDismissListener {
+                if (presentation === next) {
+                    presentation = null
+                    emulatorView.visibility = View.VISIBLE
+                    latestPixels?.let { emulatorView.submitFrame(it, latestWidth, latestHeight) }
+                }
+            }
+            latestPixels?.let { next.frame(it, latestWidth, latestHeight) }
+            emulatorView.visibility = View.INVISIBLE
+        } catch (_: android.view.WindowManager.InvalidDisplayException) {
+            closePresentation()
+            toast("Second display unavailable; using the main screen")
+        }
+    }
     private val menuPreferenceListener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
         if (key == "show_game_menu") updateMenuVisibility()
+        if (key == "dual_screen") updateDualScreen()
     }
     private fun updateMenuVisibility() {
         gameToolbar?.visibility = if (prefs.getBoolean("show_game_menu", true)) View.VISIBLE else View.GONE
@@ -133,7 +182,7 @@ class MainActivity : AppCompatActivity(), Choreographer.FrameCallback {
         check(NativeBridge.initialize(systemDir.absolutePath, saveDir.absolutePath))
 
         emulatorView = EmulatorView(this)
-        val root = FrameLayout(this)
+        val root = FrameLayout(this).apply { setBackgroundColor(android.graphics.Color.BLACK) }
         root.addView(emulatorView, FrameLayout.LayoutParams(-1, -1))
         touchControls = TouchControls(this) { held -> touchHeld = held; sendButtons() }
         root.addView(touchControls, FrameLayout.LayoutParams(-1, -1))
@@ -143,6 +192,7 @@ class MainActivity : AppCompatActivity(), Choreographer.FrameCallback {
         updateMenuVisibility()
         root.addView(gameToolbar, FrameLayout.LayoutParams(-2, -2).apply { gravity = android.view.Gravity.TOP or android.view.Gravity.END })
         setContentView(root)
+        displayManager.registerDisplayListener(displayListener, android.os.Handler(android.os.Looper.getMainLooper()))
 
         intent?.data?.let(::openRom)
     }
@@ -197,6 +247,7 @@ class MainActivity : AppCompatActivity(), Choreographer.FrameCallback {
                 RomArchive.load(it, displayName, intent.getStringExtra(RomArchive.ENTRY_EXTRA))
             } ?: error("Could not read ROM")
             val bytes = loaded.bytes
+            latestPixels = null
             pausedByUser = false
             running = false
             Choreographer.getInstance().removeFrameCallback(this)
@@ -254,7 +305,12 @@ class MainActivity : AppCompatActivity(), Choreographer.FrameCallback {
             steps++
         }
         latestFrame?.let {
-            emulatorView.submitFrame(it, NativeBridge.videoWidth(), NativeBridge.videoHeight())
+            latestPixels = it
+            latestWidth = NativeBridge.videoWidth()
+            latestHeight = NativeBridge.videoHeight()
+            val external = presentation
+            if (external != null) external.frame(it, latestWidth, latestHeight)
+            else emulatorView.submitFrame(it, latestWidth, latestHeight)
         }
         Choreographer.getInstance().postFrameCallback(this)
     }
@@ -265,7 +321,8 @@ class MainActivity : AppCompatActivity(), Choreographer.FrameCallback {
             val samples = pendingAudio.peekFirst() ?: break
             val written = track.write(samples, pendingOffset, samples.size - pendingOffset, AudioTrack.WRITE_NON_BLOCKING)
             if (written < 0) {
-                pausedByUser = false
+                latestPixels = null
+            pausedByUser = false
             running = false
                 toast("Audio output failed ($written). Reopen the ROM.")
                 return
@@ -397,6 +454,8 @@ class MainActivity : AppCompatActivity(), Choreographer.FrameCallback {
     private fun toast(message: String) = Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
 
     override fun onPause() {
+        foreground = false
+        closePresentation()
         if (romKey != null) releaseButtons()
         Choreographer.getInstance().removeFrameCallback(this)
         resetAudioQueue()
@@ -406,6 +465,8 @@ class MainActivity : AppCompatActivity(), Choreographer.FrameCallback {
 
     override fun onResume() {
         super.onResume()
+        foreground = true
+        updateDualScreen()
         updateMenuVisibility()
         if (running) {
             refreshTouchControls()
@@ -415,6 +476,10 @@ class MainActivity : AppCompatActivity(), Choreographer.FrameCallback {
         }
     }
     override fun onDestroy() {
+        foreground = false
+        displayManager.unregisterDisplayListener(displayListener)
+        closePresentation()
+        latestPixels = null
         prefs.unregisterOnSharedPreferenceChangeListener(menuPreferenceListener)
         running = false
         Choreographer.getInstance().removeFrameCallback(this)
