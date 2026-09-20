@@ -32,7 +32,10 @@ class BiosActivity : AppCompatActivity() {
                                 val output = atomic.startWrite()
                                 try { output.write(bytes); atomic.finishWrite(output) }
                                 catch (e: Exception) { atomic.failWrite(output); throw e }
-                            }.onSuccess { imported.add(system.uppercase()) }.onFailure { failed.add(system.uppercase()) }
+                            }.onSuccess {
+                                prefs.edit().putString("bios_name_$system", scan.names[system] ?: file.name).apply()
+                                imported.add(system.uppercase())
+                            }.onFailure { failed.add(system.uppercase()) }
                         }
                         val missing = listOf("gba", "gbc", "gb").filter { !File(filesDir, "system/${it}_bios.bin").exists() }
                         scanStatus = "Imported: ${imported.joinToString().ifEmpty { "none" }}. Missing: ${missing.joinToString { it.uppercase() }.ifEmpty { "none" }}. Unreadable files: ${scan.unreadable}."
@@ -52,6 +55,11 @@ class BiosActivity : AppCompatActivity() {
     private val picker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
             runCatching {
+                val displayName = runCatching {
+                    contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+                        if (cursor.moveToFirst()) cursor.getString(0)?.takeIf { it.isNotBlank() } else null
+                    }
+                }.getOrNull() ?: "${selected}_bios.bin"
                 val bytes = contentResolver.openInputStream(uri)?.use { input ->
                     val out = java.io.ByteArrayOutputStream()
                     val buffer = ByteArray(4096)
@@ -71,6 +79,7 @@ class BiosActivity : AppCompatActivity() {
                 val output = atomic.startWrite()
                 try { output.write(bytes); atomic.finishWrite(output) }
                 catch (e: Exception) { atomic.failWrite(output); throw e }
+                prefs.edit().putString("bios_name_$selected", displayName).apply()
             }.onFailure { Toast.makeText(this, it.message ?: "BIOS import failed", Toast.LENGTH_LONG).show() }
             render()
         }
@@ -102,6 +111,26 @@ class BiosActivity : AppCompatActivity() {
                 text = "${system.uppercase()} BIOS: ${if (file.exists()) "Imported — replace" else "Choose file"}"
                 isEnabled = !scanning
                 setOnClickListener { selected = system; picker.launch(arrayOf("*/*")) }
+            })
+            root.addView(TextView(this).apply {
+                text = if (file.exists()) "Selected: ${prefs.getString("bios_name_$system", null) ?: "${file.name} (original name unavailable; reselect to update)"}" else "No BIOS selected"
+            })
+            if (file.exists()) root.addView(Button(this).apply {
+                text = "Remove ${system.uppercase()} BIOS"
+                isEnabled = !scanning
+                setOnClickListener {
+                    androidx.appcompat.app.AlertDialog.Builder(this@BiosActivity)
+                        .setTitle("Remove ${system.uppercase()} BIOS?")
+                        .setMessage("Removes the imported copy from mGBA. Your original file stays in its folder. Takes effect next time you launch a game.")
+                        .setPositiveButton("Remove") { _, _ ->
+                            android.util.AtomicFile(file).delete()
+                            if (!file.exists()) {
+                                prefs.edit().remove("bios_name_$system").apply()
+                                scanStatus = "${system.uppercase()} BIOS removed. Launch the game again to use the built-in fallback."
+                            } else Toast.makeText(this@BiosActivity, "Could not remove BIOS", Toast.LENGTH_LONG).show()
+                            render()
+                        }.setNegativeButton("Cancel", null).show()
+                }
             })
             root.addView(CheckBox(this).apply {
                 text = "Skip ${system.uppercase()} BIOS"

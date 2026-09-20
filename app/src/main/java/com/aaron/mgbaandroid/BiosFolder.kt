@@ -15,9 +15,10 @@ object BiosFolder {
         if (bytes.size == 16384 && (0..6).all { bytes[it * 4 + 3] == 0xEA.toByte() && bytes[it * 4 + 2] == 0.toByte() }) return "gba"
         return null
     }
-    data class Result(val found: Map<String, ByteArray>, val unreadable: Int)
+    data class Result(val found: Map<String, ByteArray>, val unreadable: Int, val names: Map<String, String>)
     fun scan(context: Context, tree: Uri): Result {
         val found = linkedMapOf<String, ByteArray>()
+        val names = linkedMapOf<String, String>()
         val queue = java.util.ArrayDeque<String>()
         val visited = mutableSetOf<String>()
         var errors = 0
@@ -28,7 +29,7 @@ object BiosFolder {
             if (!visited.add(id)) continue
             val children = D.buildChildDocumentsUriUsingTree(tree, id)
             val cursor = context.contentResolver.query(children, arrayOf(D.Document.COLUMN_DOCUMENT_ID,
-                D.Document.COLUMN_MIME_TYPE, D.Document.COLUMN_SIZE), null, null, null)
+                D.Document.COLUMN_MIME_TYPE, D.Document.COLUMN_SIZE, D.Document.COLUMN_DISPLAY_NAME), null, null, null)
             if (cursor == null) { errors++; continue }
             cursor.use {
                 while (it.moveToNext()) {
@@ -48,11 +49,17 @@ object BiosFolder {
                             }
                             out.toByteArray()
                         } ?: error("Cannot read file")
-                        identify(bytes)?.let { system -> if (system !in found) found[system] = bytes }
+                        identify(bytes)?.let { system ->
+                            if (system !in found) {
+                                found[system] = bytes
+                                names[system] = it.getString(3)?.takeIf { name -> name.isNotBlank() }
+                                    ?: "${system}_bios.bin"
+                            }
+                        }
                     }.onFailure { errors++ }
                 }
             }
         }
-        return Result(found, errors)
+        return Result(found, errors, names)
     }
 }
