@@ -32,7 +32,7 @@ class HomeActivity : AppCompatActivity() {
     private var generation = 0
     private var section = "gba"
     private fun folderKey() = "folder_$section"
-    private fun sectionName() = when (section) { "gbc" -> "Game Boy Color"; "gb" -> "Game Boy"; else -> "GBA" }
+    private fun sectionName() = when (section) { "gbc" -> "GBC"; "gb" -> "GB"; else -> "GBA" }
     private val folderPicker = registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
         if (uri != null) {
             try {
@@ -78,7 +78,7 @@ class HomeActivity : AppCompatActivity() {
         })
         section = prefs.getString("section", "gba").takeIf { it in listOf("gba", "gbc", "gb") } ?: "gba"
         val sections = RadioGroup(this).apply { orientation = RadioGroup.HORIZONTAL }
-        for ((code, label) in listOf("gba" to "GBA", "gbc" to "Game Boy Color", "gb" to "Game Boy")) {
+        for ((code, label) in listOf("gba" to "GBA", "gbc" to "GBC", "gb" to "GB")) {
             sections.addView(RadioButton(this).apply {
                 id = View.generateViewId()
                 text = label
