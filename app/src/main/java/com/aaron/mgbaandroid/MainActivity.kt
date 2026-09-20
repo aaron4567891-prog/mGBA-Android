@@ -92,10 +92,20 @@ class MainActivity : AppCompatActivity(), Choreographer.FrameCallback {
     private fun openRom(uri: Uri) {
         runCatching {
             persistBatterySave()
-            val bytes = contentResolver.openInputStream(uri)?.use { it.readBytes() }
-                ?: error("Could not read ROM")
-            val name = uri.lastPathSegment?.substringAfterLast('/') ?: "game.gba"
-            if (!NativeBridge.loadRom(bytes, name)) error("mGBA rejected this ROM")
+            val displayName = runCatching {
+                contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use {
+                    if (it.moveToFirst()) it.getString(0) else null
+                }
+            }.getOrNull() ?: uri.lastPathSegment?.substringAfterLast('/') ?: "game.gba"
+            val loaded = contentResolver.openInputStream(uri)?.let {
+                RomArchive.load(it, displayName, intent.getStringExtra(RomArchive.ENTRY_EXTRA))
+            } ?: error("Could not read ROM")
+            val bytes = loaded.bytes
+            running = false
+            Choreographer.getInstance().removeFrameCallback(this)
+            resetAudioQueue()
+            romKey = null
+            if (!NativeBridge.loadRom(bytes, loaded.name)) error("mGBA rejected the extracted ROM")
             romKey = MessageDigest.getInstance("SHA-256").digest(bytes).take(12).joinToString("") { "%02x".format(it) }
             restoreBatterySave()
             startAudio()

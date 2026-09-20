@@ -20,7 +20,7 @@ import java.util.Locale
 import java.util.concurrent.Executors
 
 class HomeActivity : AppCompatActivity() {
-    private data class Rom(val uri: Uri, val name: String, val system: String)
+    private data class Rom(val uri: Uri, val name: String, val system: String, val zipEntry: String? = null)
     private val worker = Executors.newSingleThreadExecutor()
     private val covers = Executors.newFixedThreadPool(2)
     private val prefs by lazy { getSharedPreferences("library", MODE_PRIVATE) }
@@ -84,7 +84,7 @@ class HomeActivity : AppCompatActivity() {
             setOnItemClickListener { _, _, position, _ ->
                 games.getOrNull(position)?.let { rom ->
                     startActivity(Intent(this@HomeActivity, MainActivity::class.java)
-                        .setData(rom.uri).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
+                        .setData(rom.uri).putExtra(RomArchive.ENTRY_EXTRA, rom.zipEntry).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
                 }
             }
         }
@@ -115,7 +115,7 @@ class HomeActivity : AppCompatActivity() {
                 result.onSuccess {
                     games = it
                     grid.adapter = RomAdapter()
-                    status.text = if (it.isEmpty()) "No ${sectionName()} games found. Use extracted .$selectedSection files." else "${sectionName()} · ${it.size} games"
+                    status.text = if (it.isEmpty()) "No ${sectionName()} games found. Add .$selectedSection ROMs or ZIPs containing them." else "${sectionName()} · ${it.size} games"
                 }.onFailure {
                     status.text = "Could not read the ROM folder. Choose it again to restore access."
                 }
@@ -143,14 +143,20 @@ class HomeActivity : AppCompatActivity() {
                     if (it.getString(2) == DocumentsContract.Document.MIME_TYPE_DIR) {
                         queue.add(child)
                     } else {
-                        if (name.substringAfterLast('.', "").lowercase(Locale.ROOT) != selectedSection) continue
-                        val system = when (name.substringAfterLast('.', "").lowercase(Locale.ROOT)) {
-                            "gba" -> "Nintendo_-_Game_Boy_Advance"
-                            "gb" -> "Nintendo_-_Game_Boy"
-                            "gbc" -> "Nintendo_-_Game_Boy_Color"
-                            else -> continue
+                        val uri = DocumentsContract.buildDocumentUriUsingTree(tree, child)
+                        val zipped = RomArchive.extension(name) == "zip"
+                        val entries = if (zipped) runCatching {
+                            contentResolver.openInputStream(uri)?.let { archive -> RomArchive.entries(archive) } ?: emptyList()
+                        }.getOrElse { emptyList() } else listOf(name)
+                        for (entry in entries) {
+                            if (RomArchive.extension(entry) != selectedSection) continue
+                            val system = when (selectedSection) {
+                                "gba" -> "Nintendo_-_Game_Boy_Advance"
+                                "gb" -> "Nintendo_-_Game_Boy"
+                                else -> "Nintendo_-_Game_Boy_Color"
+                            }
+                            found.add(Rom(uri, entry.substringAfterLast('/').substringBeforeLast('.'), system, if (zipped) entry else null))
                         }
-                        found.add(Rom(DocumentsContract.buildDocumentUriUsingTree(tree, child), name.substringBeforeLast('.'), system))
                     }
                 }
             }
@@ -177,12 +183,12 @@ class HomeActivity : AppCompatActivity() {
             (card.getChildAt(1) as TextView).text = rom.name
             image.setImageResource(android.R.drawable.ic_menu_gallery)
             image.contentDescription = "${rom.name} cover"
-            image.tag = rom.uri.toString()
+            image.tag = "${rom.uri}#${rom.zipEntry}"
             val ticket = generation
             covers.execute {
                 val bitmap = runCatching { cover(rom) }.getOrNull()
                 runOnUiThread {
-                    if (!isDestroyed && ticket == generation && image.tag == rom.uri.toString() && bitmap != null) image.setImageBitmap(bitmap)
+                    if (!isDestroyed && ticket == generation && image.tag == "${rom.uri}#${rom.zipEntry}" && bitmap != null) image.setImageBitmap(bitmap)
                 }
             }
             return card
