@@ -32,6 +32,7 @@ class MainActivity : AppCompatActivity(), Choreographer.FrameCallback {
     }
     private fun releaseButtons() {
         buttonState.clear()
+        hotkeys.clear()
         stickHeld = emptySet()
         stickState.clear()
         touchControls?.release()
@@ -41,6 +42,34 @@ class MainActivity : AppCompatActivity(), Choreographer.FrameCallback {
     private fun refreshTouchControls() {
         touchControls?.release()
         touchControls?.visibility = if (prefs.getBoolean("touch_controls", true)) View.VISIBLE else View.GONE
+    }
+    private val hotkeys by lazy { Hotkeys.State(this, ::runHotkey) }
+    private fun runHotkey(action: Int) {
+        when (action) {
+            0 -> runCatching {
+                val bytes = NativeBridge.saveState() ?: error("Could not save state")
+                stateFile(1).writeBytes(bytes)
+                toast("State 1 saved")
+            }.onFailure { toast("Could not save state 1") }
+            1 -> AlertDialog.Builder(this).setTitle("Load state 1?")
+                .setMessage("This replaces your current game progress with the saved state.")
+                .setPositiveButton("Load") { _, _ ->
+                    runCatching {
+                        val file = stateFile(1)
+                        check(file.exists() && NativeBridge.loadState(file.readBytes()))
+                        resetAudioQueue()
+                        previousFrameNanos = 0L
+                        toast("State 1 loaded")
+                    }.onFailure { toast("Could not load state 1") }
+                }.setNegativeButton("Cancel", null).show()
+            2 -> { fastForward = !fastForward; toast(if (fastForward) "Fast-forward on" else "Fast-forward off") }
+            3 -> AlertDialog.Builder(this).setTitle("Return to library?")
+                .setPositiveButton("Return") { _, _ ->
+                    persistBatterySave()
+                    startActivity(Intent(this, HomeActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP))
+                    finish()
+                }.setNegativeButton("Cancel", null).show()
+        }
     }
     private var running = false
     private var fastForward = false
@@ -288,6 +317,7 @@ class MainActivity : AppCompatActivity(), Choreographer.FrameCallback {
         val controller = (sources and InputDevice.SOURCE_GAMEPAD) == InputDevice.SOURCE_GAMEPAD ||
             (sources and InputDevice.SOURCE_JOYSTICK) == InputDevice.SOURCE_JOYSTICK
         if (!controller || romKey == null || !ButtonBindings.supports(event.keyCode)) return super.dispatchKeyEvent(event)
+        if (hotkeys.handle(event)) return true
         buttonState.key(event)
         sendButtons()
         return true

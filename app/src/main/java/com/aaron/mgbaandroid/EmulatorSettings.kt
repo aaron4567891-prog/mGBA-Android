@@ -26,7 +26,8 @@ object EmulatorSettings {
             }
             .setNeutralButton("Controller mapping") { _, _ ->
                 controllerMapping(context, changed)
-            }.setPositiveButton("Done", null).show()
+            }.setNegativeButton("Hotkeys") { _, _ -> Hotkeys.show(context) }
+            .setPositiveButton("Done", null).show()
     }
 
     private fun controllerMapping(context: Context, changed: () -> Unit) {
