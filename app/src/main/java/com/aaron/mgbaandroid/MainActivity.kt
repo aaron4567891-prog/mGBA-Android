@@ -14,7 +14,6 @@ import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.Toast
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import com.google.android.material.button.MaterialButton
@@ -39,15 +38,13 @@ class MainActivity : AppCompatActivity(), Choreographer.FrameCallback {
     private var wasFastForward = false
     private val prefs by lazy { getSharedPreferences("emulator", MODE_PRIVATE) }
 
-    private val picker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        uri?.let {
-            contentResolver.takePersistableUriPermission(it, Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            openRom(it)
-        }
-    }
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (intent?.data == null) {
+            startActivity(Intent(this, HomeActivity::class.java))
+            finish()
+            return
+        }
         window.decorView.systemUiVisibility =
             View.SYSTEM_UI_FLAG_FULLSCREEN or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
 
@@ -61,7 +58,7 @@ class MainActivity : AppCompatActivity(), Choreographer.FrameCallback {
         root.addView(buildToolbar(), FrameLayout.LayoutParams(-2, -2).apply { gravity = android.view.Gravity.TOP or android.view.Gravity.END })
         setContentView(root)
 
-        intent?.data?.let(::openRom) ?: picker.launch(arrayOf("application/octet-stream", "application/zip", "*/*"))
+        intent?.data?.let(::openRom)
     }
 
     private fun buildToolbar(): View {
@@ -75,7 +72,10 @@ class MainActivity : AppCompatActivity(), Choreographer.FrameCallback {
             minWidth = 0
             setOnClickListener { action() }
         }
-        bar.addView(button("Open") { picker.launch(arrayOf("application/octet-stream", "application/zip", "*/*")) })
+        bar.addView(button("Games") {
+            startActivity(Intent(this, HomeActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP))
+            finish()
+        })
         bar.addView(button("State") { showStateMenu() })
         bar.addView(button("FF") { fastForward = !fastForward; toast(if (fastForward) "Fast-forward on" else "Fast-forward off") })
         bar.addView(button("Cheat") { showCheatDialog() })
