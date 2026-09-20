@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@android:color/white" />
+    <foreground>
+        <inset android:insetLeft="20%" android:insetTop="20%"
+            android:insetRight="20%" android:insetBottom="20%">
+            <bitmap android:src="@drawable/mgba_logo" android:gravity="fill" />
+        </inset>
+    </foreground>
+</adaptive-icon>
