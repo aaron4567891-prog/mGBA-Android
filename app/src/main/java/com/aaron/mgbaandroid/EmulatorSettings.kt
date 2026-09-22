@@ -11,7 +11,7 @@ object EmulatorSettings {
         val prefs = if (override) local!! else global
         val options = VideoOptions.read(context, game)
         val modes = arrayOf("Sharp HD (integer scaling)", "Smooth HD (bilinear)", "Pixel-art enhancement (Scale2x)")
-        val aspects = arrayOf("Original", "Stretch", "Crop")
+        val aspects = arrayOf("Original", "Stretch", "Crop", "4:3", "16:9")
         val labels = mutableListOf(
             "Display mode: ${modes[options.mode]}",
             "Aspect ratio: ${aspects[options.aspect]}",
@@ -46,7 +46,7 @@ object EmulatorSettings {
 
     private fun videoHelp(context: Context) {
         AlertDialog.Builder(context).setTitle("Display modes")
-            .setMessage("Sharp HD keeps crisp pixels and uses whole-number scaling with Original aspect ratio when the screen is large enough. Smooth HD softens pixel edges. Scale2x smooths pixel-art outlines; it is not xBRZ or ScaleFX. LCD adds a subtle pixel grid.\n\nOriginal preserves the game shape; Stretch fills the screen with distortion; Crop fills it by cutting off edges. Fullscreen hides Android system bars.\n\nGames retain their original resolution; these options do not add HD textures. Open Video during a game to enable settings just for that ROM.")
+            .setMessage("Sharp HD keeps crisp pixels and uses whole-number scaling with Original aspect ratio when the screen is large enough. Smooth HD softens pixel edges. Scale2x smooths pixel-art outlines; it is not xBRZ or ScaleFX. LCD adds a subtle pixel grid.\n\nOriginal preserves the game shape; Stretch fills the screen with distortion; Crop fills it by cutting off edges. 4:3 and 16:9 reshape the whole picture to the chosen ratio with black bars where needed. Fullscreen hides Android system bars.\n\nGames retain their original resolution; these options do not add HD textures. Open Video during a game to enable settings just for that ROM.")
             .setPositiveButton("Done", null).show()
     }
 

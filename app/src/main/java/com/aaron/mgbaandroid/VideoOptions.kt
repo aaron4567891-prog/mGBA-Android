@@ -15,7 +15,7 @@ data class VideoOptions(
             val prefs = if (local?.getBoolean("enabled", false) == true) local else global
             return VideoOptions(
                 prefs.getInt("display_mode", 0).coerceIn(0, 2),
-                prefs.getInt("display_aspect", 0).coerceIn(0, 2),
+                prefs.getInt("display_aspect", 0).coerceIn(0, 4),
                 prefs.getBoolean("display_lcd", false),
                 prefs.getBoolean("display_fullscreen", true)
             )

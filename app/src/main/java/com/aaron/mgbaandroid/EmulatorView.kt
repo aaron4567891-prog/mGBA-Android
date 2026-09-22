@@ -61,8 +61,21 @@ class EmulatorView(context: Context) : View(context) {
         val sy = height.toFloat() / sourceHeight
         var scale = if (options.aspect == 2) maxOf(sx, sy) else minOf(sx, sy)
         if (options.mode == 0 && options.aspect == 0 && scale >= 1f) scale = floor(scale)
-        val drawWidth = if (options.aspect == 1) width.toFloat() else sourceWidth * scale
-        val drawHeight = if (options.aspect == 1) height.toFloat() else sourceHeight * scale
+        val fixedRatio = when (options.aspect) {
+            3 -> 4f / 3f
+            4 -> 16f / 9f
+            else -> null
+        }
+        val drawWidth = when {
+            fixedRatio != null -> minOf(width.toFloat(), height * fixedRatio)
+            options.aspect == 1 -> width.toFloat()
+            else -> sourceWidth * scale
+        }
+        val drawHeight = when {
+            fixedRatio != null -> drawWidth / fixedRatio
+            options.aspect == 1 -> height.toFloat()
+            else -> sourceHeight * scale
+        }
         val left = (width - drawWidth) / 2f
         val top = (height - drawHeight) / 2f
         destination.set(left, top, left + drawWidth, top + drawHeight)
