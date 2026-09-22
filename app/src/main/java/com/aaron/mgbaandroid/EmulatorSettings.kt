@@ -82,8 +82,9 @@ object EmulatorSettings {
 
     fun general(context: Context) {
         AlertDialog.Builder(context).setTitle("Settings")
-            .setItems(arrayOf("Fast-forward speed", "BIOS", "In-game menu", "Dual screen")) { _, which ->
+            .setItems(arrayOf("Fast-forward speed", "BIOS", "In-game menu", "Dual screen", "Diagnostic logging")) { _, which ->
                 when (which) {
+                    4 -> context.startActivity(android.content.Intent(context, DiagnosticsActivity::class.java))
                     3 -> dualScreen(context)
                     2 -> menuVisibility(context)
                     0 -> fastForward(context)

@@ -271,6 +271,7 @@ class MainActivity : AppCompatActivity(), Choreographer.FrameCallback {
                 RomArchive.load(it, displayName, intent.getStringExtra(RomArchive.ENTRY_EXTRA))
             } ?: error("Could not read ROM")
             val bytes = loaded.bytes
+            Diagnostics.record(this, "Loading ROM: ${loaded.name}, bytes=${bytes.size}")
             latestPixels = null
             pausedByUser = false
             running = false
@@ -280,12 +281,13 @@ class MainActivity : AppCompatActivity(), Choreographer.FrameCallback {
             if (!NativeBridge.loadRom(bytes, loaded.name, prefs.getBoolean("skip_bios_${RomArchive.extension(loaded.name)}", false))) error("mGBA rejected the extracted ROM")
             romKey = MessageDigest.getInstance("SHA-256").digest(bytes).take(12).joinToString("") { "%02x".format(it) }
             applyVideoOptions()
+            Diagnostics.record(this, "ROM loaded: video=${NativeBridge.videoWidth()}x${NativeBridge.videoHeight()}, audio=${NativeBridge.audioRate()}, display=${VideoOptions.read(this, romKey)}")
             restoreBatterySave()
             startAudio()
             running = true
             Choreographer.getInstance().removeFrameCallback(this)
             Choreographer.getInstance().postFrameCallback(this)
-        }.onFailure { toast(it.message ?: "ROM loading failed") }
+        }.onFailure { Diagnostics.record(this, "ROM load failed: ${it.stackTraceToString()}"); toast(it.message ?: "ROM loading failed") }
     }
 
     override fun doFrame(frameTimeNanos: Long) {
@@ -347,6 +349,7 @@ class MainActivity : AppCompatActivity(), Choreographer.FrameCallback {
                 latestPixels = null
             pausedByUser = false
             running = false
+                Diagnostics.record(this, "Audio output failed: $written")
                 toast("Audio output failed ($written). Reopen the ROM.")
                 return
             }
@@ -477,6 +480,7 @@ class MainActivity : AppCompatActivity(), Choreographer.FrameCallback {
     private fun toast(message: String) = Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
 
     override fun onPause() {
+        Diagnostics.record(this, "Game activity paused")
         foreground = false
         closePresentation()
         if (romKey != null) releaseButtons()
@@ -489,6 +493,7 @@ class MainActivity : AppCompatActivity(), Choreographer.FrameCallback {
     override fun onResume() {
         super.onResume()
         foreground = true
+        Diagnostics.record(this, "Game activity resumed")
         if (::emulatorView.isInitialized) applyVideoOptions()
         updateDualScreen()
         updateMenuVisibility()
