@@ -213,6 +213,14 @@ class MainActivity : AppCompatActivity(), Choreographer.FrameCallback {
         intent?.data?.let(::openRom)
     }
 
+    private fun applyVideoOptions() {
+        val options = VideoOptions.read(this, romKey)
+        emulatorView.configure(options)
+        window.decorView.systemUiVisibility = if (options.fullscreen)
+            View.SYSTEM_UI_FLAG_FULLSCREEN or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+        else View.SYSTEM_UI_FLAG_VISIBLE
+    }
+
     private fun buildToolbar(): View {
         val bar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -233,7 +241,7 @@ class MainActivity : AppCompatActivity(), Choreographer.FrameCallback {
         bar.addView(button("FF") { fastForward = !fastForward; toast(if (fastForward) "Fast-forward on" else "Fast-forward off") })
         bar.addView(button("Cheat") { showCheatDialog() })
         bar.addView(button("Settings") { showSettings() })
-        bar.addView(button("Video") { EmulatorSettings.video(this) { emulatorView.invalidate() } })
+        bar.addView(button("Video") { EmulatorSettings.video(this, romKey) { applyVideoOptions() } })
         bar.addView(button("Input") {
             releaseButtons()
             EmulatorSettings.input(this) { releaseButtons(); refreshTouchControls() }
@@ -271,6 +279,7 @@ class MainActivity : AppCompatActivity(), Choreographer.FrameCallback {
             romKey = null
             if (!NativeBridge.loadRom(bytes, loaded.name, prefs.getBoolean("skip_bios_${RomArchive.extension(loaded.name)}", false))) error("mGBA rejected the extracted ROM")
             romKey = MessageDigest.getInstance("SHA-256").digest(bytes).take(12).joinToString("") { "%02x".format(it) }
+            applyVideoOptions()
             restoreBatterySave()
             startAudio()
             running = true
@@ -416,7 +425,7 @@ class MainActivity : AppCompatActivity(), Choreographer.FrameCallback {
                     0 -> setPaused(!pausedByUser)
                     1 -> showStateMenu()
                     2 -> runHotkey(2)
-                    3 -> EmulatorSettings.video(this) { emulatorView.invalidate() }
+                    3 -> EmulatorSettings.video(this, romKey) { applyVideoOptions() }
                     4 -> EmulatorSettings.input(this) { releaseButtons(); refreshTouchControls() }
                     5 -> showSettings()
                     6 -> showCheatDialog()
@@ -480,6 +489,7 @@ class MainActivity : AppCompatActivity(), Choreographer.FrameCallback {
     override fun onResume() {
         super.onResume()
         foreground = true
+        if (::emulatorView.isInitialized) applyVideoOptions()
         updateDualScreen()
         updateMenuVisibility()
         if (running) {

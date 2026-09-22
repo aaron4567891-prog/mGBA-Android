@@ -4,16 +4,50 @@ import android.content.Context
 import androidx.appcompat.app.AlertDialog
 
 object EmulatorSettings {
-    fun video(context: Context, changed: () -> Unit = {}) {
-        val prefs = context.getSharedPreferences("emulator", Context.MODE_PRIVATE)
-        val labels = arrayOf("Smooth image", "Stretch to fill screen")
-        val keys = arrayOf("video_smooth", "video_stretch")
-        val checked = booleanArrayOf(prefs.getBoolean(keys[0], true), prefs.getBoolean(keys[1], false))
-        AlertDialog.Builder(context).setTitle("Video")
-            .setMultiChoiceItems(labels, checked) { _, index, enabled ->
-                prefs.edit().putBoolean(keys[index], enabled).apply()
-                changed()
+    fun video(context: Context, game: String? = null, changed: () -> Unit = {}) {
+        val global = context.getSharedPreferences("emulator", Context.MODE_PRIVATE)
+        val local = game?.let { context.getSharedPreferences("video_game_$it", Context.MODE_PRIVATE) }
+        val override = local?.getBoolean("enabled", false) == true
+        val prefs = if (override) local!! else global
+        val options = VideoOptions.read(context, game)
+        val modes = arrayOf("Sharp HD (integer scaling)", "Smooth HD (bilinear)", "Pixel-art enhancement (Scale2x)")
+        val aspects = arrayOf("Original", "Stretch", "Crop")
+        val labels = mutableListOf(
+            "Display mode: ${modes[options.mode]}",
+            "Aspect ratio: ${aspects[options.aspect]}",
+            "LCD effect: ${if (options.lcd) "On" else "Off"}",
+            "Fullscreen: ${if (options.fullscreen) "On" else "Off"}"
+        )
+        if (local != null) labels.add(if (override) "Use global display settings" else "Customize this game")
+        labels.add("About display modes")
+        AlertDialog.Builder(context).setTitle(if (override) "Video — this game" else "Video — global")
+            .setItems(labels.toTypedArray()) { _, index ->
+                fun refresh() { changed(); video(context, game, changed) }
+                when (index) {
+                    0, 1 -> AlertDialog.Builder(context)
+                        .setTitle(if (index == 0) "Display mode" else "Aspect ratio")
+                        .setSingleChoiceItems(if (index == 0) modes else aspects,
+                            if (index == 0) options.mode else options.aspect) { dialog, value ->
+                            prefs.edit().putInt(if (index == 0) "display_mode" else "display_aspect", value).apply()
+                            dialog.dismiss(); refresh()
+                        }.setNegativeButton("Cancel") { _, _ -> video(context, game, changed) }.show()
+                    2 -> { prefs.edit().putBoolean("display_lcd", !options.lcd).apply(); refresh() }
+                    3 -> { prefs.edit().putBoolean("display_fullscreen", !options.fullscreen).apply(); refresh() }
+                    4 -> if (local != null) {
+                        local.edit().putBoolean("enabled", !override)
+                            .putInt("display_mode", options.mode).putInt("display_aspect", options.aspect)
+                            .putBoolean("display_lcd", options.lcd).putBoolean("display_fullscreen", options.fullscreen).apply()
+                        refresh()
+                    } else videoHelp(context)
+                    else -> videoHelp(context)
+                }
             }.setPositiveButton("Done", null).show()
+    }
+
+    private fun videoHelp(context: Context) {
+        AlertDialog.Builder(context).setTitle("Display modes")
+            .setMessage("Sharp HD keeps crisp pixels and uses whole-number scaling with Original aspect ratio when the screen is large enough. Smooth HD softens pixel edges. Scale2x smooths pixel-art outlines; it is not xBRZ or ScaleFX. LCD adds a subtle pixel grid.\n\nOriginal preserves the game shape; Stretch fills the screen with distortion; Crop fills it by cutting off edges. Fullscreen hides Android system bars.\n\nGames retain their original resolution; these options do not add HD textures. Open Video during a game to enable settings just for that ROM.")
+            .setPositiveButton("Done", null).show()
     }
 
     fun input(context: Context, changed: () -> Unit = {}) {
