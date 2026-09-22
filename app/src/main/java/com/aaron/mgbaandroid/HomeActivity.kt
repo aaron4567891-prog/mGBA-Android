@@ -118,6 +118,11 @@ class HomeActivity : AppCompatActivity() {
             horizontalSpacing = dp(12)
             verticalSpacing = dp(12)
             isFocusable = true
+            // Draw our own high-contrast selection around the artwork, not the whole cell.
+            selector = android.graphics.drawable.ColorDrawable(Color.TRANSPARENT)
+            setOnFocusChangeListener { _, _ ->
+                for (index in 0 until childCount) getChildAt(index).invalidate()
+            }
             setOnItemClickListener { _, _, position, _ ->
                 games.getOrNull(position)?.let { rom ->
                     startActivity(Intent(this@HomeActivity, MainActivity::class.java)
@@ -203,22 +208,63 @@ class HomeActivity : AppCompatActivity() {
         return found.sortedBy { it.name.lowercase(Locale.ROOT) }
     }
 
+    /** GridView owns focus/selection; children must not consume controller navigation. */
+    private inner class RomCard : LinearLayout(this@HomeActivity) {
+        private val outline = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+            style = android.graphics.Paint.Style.STROKE
+            strokeWidth = dp(3).toFloat()
+            color = Color.rgb(190, 160, 255)
+        }
+        private val border = android.graphics.RectF()
+
+        init {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(8), dp(8), dp(8), dp(8))
+            descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
+            isFocusable = false
+            setBackgroundColor(Color.argb(210, 20, 17, 29))
+            addView(ImageView(context).apply {
+                scaleType = ImageView.ScaleType.FIT_CENTER
+            }, LinearLayout.LayoutParams(-1, dp(145)))
+            addView(TextView(context).apply {
+                gravity = Gravity.CENTER
+                maxLines = 2
+                textSize = 15f
+                setTextColor(Color.WHITE)
+            }, LinearLayout.LayoutParams(-1, dp(48)))
+        }
+
+        override fun drawableStateChanged() {
+            super.drawableStateChanged()
+            // Selection changes without rebinding the adapter's view.
+            invalidate()
+        }
+
+        override fun dispatchDraw(canvas: android.graphics.Canvas) {
+            super.dispatchDraw(canvas)
+            if (!((isSelected && grid.hasFocus()) || isPressed || isHovered)) return
+            val image = getChildAt(0) as ImageView
+            val drawable = image.drawable
+            val iw = drawable?.intrinsicWidth ?: 0
+            val ih = drawable?.intrinsicHeight ?: 0
+            val scale = if (iw > 0 && ih > 0)
+                minOf(image.width.toFloat() / iw, image.height.toFloat() / ih) else 1f
+            val w = if (iw > 0) iw * scale else image.width.toFloat()
+            val h = if (ih > 0) ih * scale else image.height.toFloat()
+            val left = image.left + (image.width - w) / 2f
+            val top = image.top + (image.height - h) / 2f
+            val gap = dp(3).toFloat()
+            border.set(left - gap, top - gap, left + w + gap, top + h + gap)
+            canvas.drawRoundRect(border, dp(3).toFloat(), dp(3).toFloat(), outline)
+        }
+    }
+
     private inner class RomAdapter : BaseAdapter() {
         override fun getCount() = games.size
         override fun getItem(position: Int) = games[position]
         override fun getItemId(position: Int) = position.toLong()
         override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
-            val card = (convertView as? LinearLayout) ?: LinearLayout(this@HomeActivity).apply {
-                orientation = LinearLayout.VERTICAL
-                setPadding(dp(8), dp(8), dp(8), dp(8))
-                addView(ImageView(context).apply { scaleType = ImageView.ScaleType.FIT_CENTER }, LinearLayout.LayoutParams(-1, dp(145)))
-                addView(TextView(context).apply { gravity = Gravity.CENTER; maxLines = 2; textSize = 15f; setTextColor(Color.WHITE) }, LinearLayout.LayoutParams(-1, dp(48)))
-                val value = android.util.TypedValue()
-                theme.resolveAttribute(android.R.attr.selectableItemBackground, value, true)
-                // Keep the theme's pressed/focused feedback above the dark card surface.
-                setBackgroundColor(Color.argb(210, 20, 17, 29))
-                foreground = androidx.core.content.ContextCompat.getDrawable(context, value.resourceId)
-            }
+            val card = (convertView as? RomCard) ?: RomCard()
             val rom = games[position]
             val image = card.getChildAt(0) as ImageView
             (card.getChildAt(1) as TextView).text = rom.name
@@ -250,6 +296,8 @@ class HomeActivity : AppCompatActivity() {
                                 for (waiting in targets) {
                                     if (waiting.generation == generation && waiting.image.tag == waiting.tag && bitmap != null) {
                                         waiting.image.setImageBitmap(bitmap)
+                                        // The downloaded cover may have a different aspect ratio.
+                                        (waiting.image.parent as? View)?.invalidate()
                                     }
                                 }
                             }
