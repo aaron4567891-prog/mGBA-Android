@@ -21,6 +21,14 @@ import java.io.File
 import java.security.MessageDigest
 
 class MainActivity : AppCompatActivity(), Choreographer.FrameCallback {
+    companion object {
+        private const val STATE_ROM_KEY = "active_rom_key"
+        private const val STATE_ROM_URI = "active_rom_uri"
+        private const val STATE_ARCHIVE_ENTRY = "active_archive_entry"
+        private const val STATE_PAUSED = "active_paused"
+        private const val STATE_FAST_FORWARD = "active_fast_forward"
+    }
+
     private lateinit var emulatorView: EmulatorView
     private var gameToolbar: View? = null
     private var presentation: GamePresentation? = null
@@ -170,6 +178,8 @@ class MainActivity : AppCompatActivity(), Choreographer.FrameCallback {
     private var running = false
     private var fastForward = false
     private var romKey: String? = null
+    private var activeRomUri: String? = null
+    private var activeArchiveEntry: String? = null
     private var audioTrack: AudioTrack? = null
     // GBA and GB both run at approximately 59.7275 frames per second.
     private val framePeriodNanos = 1_000_000_000.0 * 280896.0 / 16777216.0
@@ -210,7 +220,21 @@ class MainActivity : AppCompatActivity(), Choreographer.FrameCallback {
         setContentView(root)
         displayManager.registerDisplayListener(displayListener, android.os.Handler(android.os.Looper.getMainLooper()))
 
-        intent?.data?.let(::openRom)
+        val retainedCore = savedInstanceState != null && NativeBridge.isRomLoaded()
+        if (retainedCore) {
+            romKey = savedInstanceState.getString(STATE_ROM_KEY)
+            activeRomUri = savedInstanceState.getString(STATE_ROM_URI)
+            activeArchiveEntry = savedInstanceState.getString(STATE_ARCHIVE_ENTRY)
+            pausedByUser = savedInstanceState.getBoolean(STATE_PAUSED, false)
+            fastForward = savedInstanceState.getBoolean(STATE_FAST_FORWARD, false)
+            applyVideoOptions()
+            startAudio()
+            running = true
+            Diagnostics.record(this, "Retained ROM session restored after activity recreation")
+            Choreographer.getInstance().postFrameCallback(this)
+        } else {
+            intent?.data?.let(::openRom)
+        }
     }
 
     private fun applyVideoOptions() {
@@ -255,11 +279,18 @@ class MainActivity : AppCompatActivity(), Choreographer.FrameCallback {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        intent.data?.let(::openRom)
+        val uri = intent.data ?: return
+        val archiveEntry = intent.getStringExtra(RomArchive.ENTRY_EXTRA)
+        if (running && activeRomUri == uri.toString() && activeArchiveEntry == archiveEntry) {
+            Diagnostics.record(this, "Ignored duplicate ROM launch intent: $uri")
+            return
+        }
+        openRom(uri)
     }
 
     private fun openRom(uri: Uri) {
         runCatching {
+            val archiveEntry = intent.getStringExtra(RomArchive.ENTRY_EXTRA)
             releaseButtons()
             persistBatterySave()
             val displayName = runCatching {
@@ -268,7 +299,7 @@ class MainActivity : AppCompatActivity(), Choreographer.FrameCallback {
                 }
             }.getOrNull() ?: uri.lastPathSegment?.substringAfterLast('/') ?: "game.gba"
             val loaded = contentResolver.openInputStream(uri)?.let {
-                RomArchive.load(it, displayName, intent.getStringExtra(RomArchive.ENTRY_EXTRA))
+                RomArchive.load(it, displayName, archiveEntry)
             } ?: error("Could not read ROM")
             val bytes = loaded.bytes
             Diagnostics.record(this, "Loading ROM: ${loaded.name}, bytes=${bytes.size}")
@@ -280,6 +311,8 @@ class MainActivity : AppCompatActivity(), Choreographer.FrameCallback {
             romKey = null
             if (!NativeBridge.loadRom(bytes, loaded.name, prefs.getBoolean("skip_bios_${RomArchive.extension(loaded.name)}", false))) error("mGBA rejected the extracted ROM")
             romKey = MessageDigest.getInstance("SHA-256").digest(bytes).take(12).joinToString("") { "%02x".format(it) }
+            activeRomUri = uri.toString()
+            activeArchiveEntry = archiveEntry
             applyVideoOptions()
             Diagnostics.record(this, "ROM loaded: video=${NativeBridge.videoWidth()}x${NativeBridge.videoHeight()}, audio=${NativeBridge.audioRate()}, display=${VideoOptions.read(this, romKey)}")
             restoreBatterySave()
@@ -479,6 +512,15 @@ class MainActivity : AppCompatActivity(), Choreographer.FrameCallback {
     private fun persistBatterySave() { if (romKey != null) NativeBridge.readSaveRam().takeIf { it.isNotEmpty() }?.let { saveFile().writeBytes(it) } }
     private fun toast(message: String) = Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
 
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putString(STATE_ROM_KEY, romKey)
+        outState.putString(STATE_ROM_URI, activeRomUri)
+        outState.putString(STATE_ARCHIVE_ENTRY, activeArchiveEntry)
+        outState.putBoolean(STATE_PAUSED, pausedByUser)
+        outState.putBoolean(STATE_FAST_FORWARD, fastForward)
+    }
+
     override fun onPause() {
         Diagnostics.record(this, "Game activity paused")
         foreground = false
@@ -513,7 +555,11 @@ class MainActivity : AppCompatActivity(), Choreographer.FrameCallback {
         running = false
         Choreographer.getInstance().removeFrameCallback(this)
         persistBatterySave()
-        NativeBridge.unloadRom()
+        if (!isChangingConfigurations) {
+            NativeBridge.unloadRom()
+        } else {
+            Diagnostics.record(this, "Retaining ROM session across activity recreation")
+        }
         audioTrack?.release()
         super.onDestroy()
     }

@@ -4,6 +4,7 @@ object NativeBridge {
     init { System.loadLibrary("mgba_android") }
 
     external fun initialize(systemDir: String, saveDir: String): Boolean
+    external fun isRomLoaded(): Boolean
     external fun loadRom(data: ByteArray, displayName: String, skipBios: Boolean): Boolean
     external fun unloadRom()
     external fun runFrame(frameCount: Int): IntArray?
