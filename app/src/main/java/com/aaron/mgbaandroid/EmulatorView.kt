@@ -54,12 +54,12 @@ class EmulatorView(context: Context) : FrameLayout(context) {
         canvasView.visibility = View.VISIBLE
         if (lastPixels.isNotEmpty()) canvasView.submitFrame(lastPixels, sourceWidth, sourceHeight)
     }
-    fun submitFrame(pixels: IntArray, width: Int, height: Int) {
+    fun submitFrame(pixels: IntArray, width: Int, height: Int, frameTimeNanos: Long = 0L) {
         if (width <= 0 || height <= 0 || pixels.size < width * height) return
         if (lastPixels.size != width * height) lastPixels = IntArray(width * height)
         pixels.copyInto(lastPixels, endIndex = lastPixels.size)
         sourceWidth = width; sourceHeight = height
-        surface?.submitFrame(pixels, width, height) ?: canvasView.submitFrame(pixels, width, height)
+        surface?.submitFrame(pixels, width, height, frameTimeNanos) ?: canvasView.submitFrame(pixels, width, height)
     }
     fun pause() { if (!paused) { paused = true; surface?.onPause() } }
     fun resume() { if (paused) { paused = false; surface?.onResume() } }

@@ -368,7 +368,7 @@ class MainActivity : AppCompatActivity(), Choreographer.FrameCallback {
             latestPixels = it
             latestWidth = NativeBridge.videoWidth()
             latestHeight = NativeBridge.videoHeight()
-            emulatorView.submitFrame(it, latestWidth, latestHeight)
+            emulatorView.submitFrame(it, latestWidth, latestHeight, frameTimeNanos)
         }
         Choreographer.getInstance().postFrameCallback(this)
     }

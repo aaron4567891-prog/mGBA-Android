@@ -17,7 +17,9 @@ data class ShaderChain(val enabled: Boolean = false, val passes: List<ShaderPass
 }
 
 data class ShaderSource(val id: String, val name: String, val source: String) {
-    val parameters: List<ShaderParameter> get() = ShaderFormat.parameters(source)
+    // Source is immutable. Parsing it in the draw loop adds allocations and
+    // occasional GC pauses even when neither the shader nor its controls changed.
+    val parameters: List<ShaderParameter> by lazy { ShaderFormat.parameters(source) }
 }
 
 object ShaderFormat {
