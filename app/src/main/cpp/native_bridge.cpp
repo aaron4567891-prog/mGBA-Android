@@ -97,6 +97,11 @@ Java_com_aaron_mgbaandroid_NativeBridge_initialize(JNIEnv* env, jobject, jstring
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
+Java_com_aaron_mgbaandroid_NativeBridge_isRomLoaded(JNIEnv*, jobject) {
+    return core ? JNI_TRUE : JNI_FALSE;
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
 Java_com_aaron_mgbaandroid_NativeBridge_loadRom(JNIEnv* env, jobject, jbyteArray bytes, jstring, jboolean skipBios) {
     closeCore();
     const jsize size = env->GetArrayLength(bytes);
