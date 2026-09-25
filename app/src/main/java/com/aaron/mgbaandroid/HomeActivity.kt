@@ -131,10 +131,6 @@ class HomeActivity : AppCompatActivity() {
             }
         }
         root.addView(grid, LinearLayout.LayoutParams(-1, 0, 1f))
-        root.addView(TextView(this).apply {
-            text = "Box art: Libretro thumbnails · downloaded automatically and cached"
-            textSize = 11f; setTextColor(Color.LTGRAY)
-        })
         backdrop.addView(root, FrameLayout.LayoutParams(-1, -1))
         setContentView(backdrop)
         refresh()

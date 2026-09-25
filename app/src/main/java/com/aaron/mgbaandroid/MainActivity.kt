@@ -487,6 +487,7 @@ class MainActivity : AppCompatActivity(), Choreographer.FrameCallback {
         Choreographer.getInstance().removeFrameCallback(this)
         resetAudioQueue()
         persistBatterySave()
+        if (::emulatorView.isInitialized) emulatorView.pause()
         super.onPause()
     }
 
@@ -494,7 +495,7 @@ class MainActivity : AppCompatActivity(), Choreographer.FrameCallback {
         super.onResume()
         foreground = true
         Diagnostics.record(this, "Game activity resumed")
-        if (::emulatorView.isInitialized) applyVideoOptions()
+        if (::emulatorView.isInitialized) { applyVideoOptions(); emulatorView.resume() }
         updateDualScreen()
         updateMenuVisibility()
         if (running) {

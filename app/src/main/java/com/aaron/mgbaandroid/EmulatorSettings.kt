@@ -16,11 +16,12 @@ object EmulatorSettings {
             "Display mode: ${modes[options.mode]}",
             "Aspect ratio: ${aspects[options.aspect]}",
             "LCD effect: ${if (options.lcd) "On" else "Off"}",
-            "Fullscreen: ${if (options.fullscreen) "On" else "Off"}"
+            "Fullscreen: ${if (options.fullscreen) "On" else "Off"}",
+            "Shaders: ${if (options.shaders.enabled && options.shaders.passes.isNotEmpty()) "On" else "Off"}"
         )
         if (local != null) labels.add(if (override) "Use global display settings" else "Customize this game")
         labels.add("About display modes")
-        AlertDialog.Builder(context).setTitle(if (override) "Video — this game" else "Video — global")
+        AlertDialog.Builder(context).setTitle(if (override) "Video â€” this game" else "Video â€” global")
             .setItems(labels.toTypedArray()) { _, index ->
                 fun refresh() { changed(); video(context, game, changed) }
                 when (index) {
@@ -33,10 +34,12 @@ object EmulatorSettings {
                         }.setNegativeButton("Cancel") { _, _ -> video(context, game, changed) }.show()
                     2 -> { prefs.edit().putBoolean("display_lcd", !options.lcd).apply(); refresh() }
                     3 -> { prefs.edit().putBoolean("display_fullscreen", !options.fullscreen).apply(); refresh() }
-                    4 -> if (local != null) {
+                    4 -> context.startActivity(android.content.Intent(context, ShaderActivity::class.java).putExtra("game", game))
+                    5 -> if (local != null) {
                         local.edit().putBoolean("enabled", !override)
                             .putInt("display_mode", options.mode).putInt("display_aspect", options.aspect)
-                            .putBoolean("display_lcd", options.lcd).putBoolean("display_fullscreen", options.fullscreen).apply()
+                            .putBoolean("display_lcd", options.lcd).putBoolean("display_fullscreen", options.fullscreen)
+                            .putString(ShaderLibrary.KEY, ShaderLibrary.encode(options.shaders)).apply()
                         refresh()
                     } else videoHelp(context)
                     else -> videoHelp(context)

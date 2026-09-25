@@ -6,7 +6,8 @@ data class VideoOptions(
     val mode: Int = 0,
     val aspect: Int = 0,
     val lcd: Boolean = false,
-    val fullscreen: Boolean = true
+    val fullscreen: Boolean = true,
+    val shaders: ShaderChain = ShaderChain()
 ) {
     companion object {
         fun read(context: Context, game: String?): VideoOptions {
@@ -17,7 +18,8 @@ data class VideoOptions(
                 prefs.getInt("display_mode", 0).coerceIn(0, 2),
                 prefs.getInt("display_aspect", 0).coerceIn(0, 4),
                 prefs.getBoolean("display_lcd", false),
-                prefs.getBoolean("display_fullscreen", true)
+                prefs.getBoolean("display_fullscreen", true),
+                ShaderLibrary.decode(prefs.getString(ShaderLibrary.KEY, null))
             )
         }
     }

@@ -1,0 +1,142 @@
+{
+  "source": "https://raw.githubusercontent.com/libretro/slang-shaders/9d68d530a92b5666c8dc151a6884aa8ce16df095/handheld/shaders/color/gba-color.slang",
+  "description": "RGBA8 reference from the upstream Slang colour matrices and gamma equations, evaluated in Python double precision.",
+  "colors": [
+    0,
+    16777215,
+    16711680,
+    65280,
+    255,
+    8421504,
+    13668464,
+    3368601
+  ],
+  "cases": [
+    {
+      "profile": 1,
+      "darkness": 0.0,
+      "expected": [
+        0,
+        16053492,
+        15292009,
+        7653733,
+        33488,
+        8092539,
+        12880771,
+        2715010
+      ]
+    },
+    {
+      "profile": 1,
+      "darkness": 0.5,
+      "expected": [
+        0,
+        15921906,
+        15024982,
+        6405714,
+        28870,
+        6842472,
+        12155249,
+        1792624
+      ]
+    },
+    {
+      "profile": 1,
+      "darkness": 2.2,
+      "expected": [
+        0,
+        15395562,
+        14032172,
+        3513896,
+        17065,
+        3881787,
+        9915460,
+        470851
+      ]
+    },
+    {
+      "profile": 2,
+      "darkness": 0.0,
+      "expected": [
+        0,
+        16514043,
+        14574189,
+        9162099,
+        33744,
+        8289918,
+        12685961,
+        4157316
+      ]
+    },
+    {
+      "profile": 2,
+      "darkness": 0.5,
+      "expected": [
+        0,
+        16514043,
+        14110554,
+        7979872,
+        28871,
+        7105644,
+        11894903,
+        3038322
+      ]
+    },
+    {
+      "profile": 2,
+      "darkness": 2.2,
+      "expected": [
+        0,
+        16316664,
+        12657967,
+        4957492,
+        17322,
+        4079166,
+        9589577,
+        1060933
+      ]
+    },
+    {
+      "profile": 3,
+      "darkness": 0.0,
+      "expected": [
+        0,
+        16777215,
+        13397359,
+        10341495,
+        4096978,
+        8421504,
+        12162699,
+        5271430
+      ]
+    },
+    {
+      "profile": 3,
+      "darkness": 0.5,
+      "expected": [
+        0,
+        16777215,
+        12737116,
+        9290340,
+        2977993,
+        7171437,
+        11306361,
+        4086899
+      ]
+    },
+    {
+      "profile": 3,
+      "darkness": 2.2,
+      "expected": [
+        0,
+        16777215,
+        10694448,
+        6399032,
+        1000365,
+        4210752,
+        8869964,
+        1651014
+      ]
+    }
+  ]
+}

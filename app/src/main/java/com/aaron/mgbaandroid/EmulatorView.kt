@@ -7,9 +7,65 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.RectF
 import android.view.View
+import android.widget.FrameLayout
+import androidx.appcompat.app.AlertDialog
 import kotlin.math.floor
 
-class EmulatorView(context: Context) : View(context) {
+class EmulatorView(context: Context) : FrameLayout(context) {
+    private val canvasView = CanvasEmulatorView(context)
+    private var surface: ShaderSurface? = null
+    private var options = VideoOptions()
+    private var failedOptions: VideoOptions? = null
+    private var paused = false
+    private var lastPixels = IntArray(0)
+    private var sourceWidth = 0
+    private var sourceHeight = 0
+
+    init { addView(canvasView, LayoutParams(-1, -1)) }
+
+    fun configure(value: VideoOptions) {
+        options = value
+        if (!value.shaders.enabled) failedOptions = null
+        canvasView.configure(value)
+        val useShaders = value.shaders.enabled && value.shaders.passes.isNotEmpty() && failedOptions != value
+        if (!useShaders) { showCanvas(); return }
+        if (surface == null) {
+            lateinit var next: ShaderSurface
+            next = ShaderSurface(context) { rejectedOptions, detail ->
+                if (surface === next && options == rejectedOptions) {
+                    failedOptions = rejectedOptions
+                    showCanvas()
+                    Diagnostics.record(context, "Shader fallback: $detail")
+                    if (isAttachedToWindow) AlertDialog.Builder(context).setTitle("Shader could not run")
+                        .setMessage("The normal picture has been restored. Change or disable the shader in Video > Shaders.\n\n$detail")
+                        .setPositiveButton("OK", null).show()
+                }
+            }
+            surface = next
+            addView(next, LayoutParams(-1, -1))
+            if (paused) next.onPause()
+        }
+        canvasView.visibility = View.GONE
+        surface!!.configure(value)
+        if (lastPixels.isNotEmpty()) surface!!.submitFrame(lastPixels, sourceWidth, sourceHeight)
+    }
+    private fun showCanvas() {
+        surface?.let { removeView(it) }; surface = null
+        canvasView.visibility = View.VISIBLE
+        if (lastPixels.isNotEmpty()) canvasView.submitFrame(lastPixels, sourceWidth, sourceHeight)
+    }
+    fun submitFrame(pixels: IntArray, width: Int, height: Int) {
+        if (width <= 0 || height <= 0 || pixels.size < width * height) return
+        if (lastPixels.size != width * height) lastPixels = IntArray(width * height)
+        pixels.copyInto(lastPixels, endIndex = lastPixels.size)
+        sourceWidth = width; sourceHeight = height
+        surface?.submitFrame(pixels, width, height) ?: canvasView.submitFrame(pixels, width, height)
+    }
+    fun pause() { if (!paused) { paused = true; surface?.onPause() } }
+    fun resume() { if (paused) { paused = false; surface?.onResume() } }
+}
+
+private class CanvasEmulatorView(context: Context) : View(context) {
     private val paint = Paint()
     private val gridPaint = Paint().apply { color = 0x28000000; strokeWidth = 1f }
     private val destination = RectF()
