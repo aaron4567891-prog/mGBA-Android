@@ -8,6 +8,7 @@ import java.io.File
 /** Battery-save storage with an optional user-selected SAF folder. */
 object SaveStorage {
     const val PREF_TREE_URI = "save_tree_uri"
+    val DATA_FOLDERS = listOf("saves", "states", "system", "shaders", "cheats")
 
     private fun prefs(context: Context) = context.getSharedPreferences("emulator", Context.MODE_PRIVATE)
     private fun internalFile(context: Context, romKey: String) =
@@ -19,6 +20,11 @@ object SaveStorage {
 
     fun setTreeUri(context: Context, uri: Uri) {
         prefs(context).edit().putString(PREF_TREE_URI, uri.toString()).apply()
+    }
+
+    fun ensureDataFolders(context: Context) {
+        val tree = treeUri(context) ?: error("No save folder selected")
+        DATA_FOLDERS.forEach { name -> ensureDirectory(context, tree, name) }
     }
 
     fun useAppPrivateStorage(context: Context) {
@@ -49,7 +55,13 @@ object SaveStorage {
         File(context.filesDir, "saves").listFiles().orEmpty()
             .filter { it.isFile && it.extension.equals("sav", ignoreCase = true) }
             .forEach { file ->
-                runCatching { write(context, file.nameWithoutExtension, file.readBytes()) }
+                // Never replace a save that already exists in the user-selected folder.
+                // The user can import/replace it explicitly from the in-game menu.
+                runCatching {
+                    if (treeUri(context)?.let { findFile(context, it, file.name) } == null) {
+                        write(context, file.nameWithoutExtension, file.readBytes())
+                    }
+                }
             }
     }
 
@@ -71,5 +83,16 @@ object SaveStorage {
         val parent = DocumentsContract.buildDocumentUriUsingTree(tree, DocumentsContract.getTreeDocumentId(tree))
         return DocumentsContract.createDocument(context.contentResolver, parent, "application/octet-stream", name)
             ?: error("Could not create a save file in the selected folder")
+    }
+
+    private fun ensureDirectory(context: Context, tree: Uri, name: String): Uri {
+        findFile(context, tree, name)?.let { return it }
+        val parent = DocumentsContract.buildDocumentUriUsingTree(tree, DocumentsContract.getTreeDocumentId(tree))
+        return DocumentsContract.createDocument(
+            context.contentResolver,
+            parent,
+            DocumentsContract.Document.MIME_TYPE_DIR,
+            name,
+        ) ?: error("Could not create the $name folder")
     }
 }

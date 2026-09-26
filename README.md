@@ -10,6 +10,7 @@ Standalone Android frontend built directly on the official mGBA `mCore` API from
 - Battery saves and three save-state slots
 - Import compatible battery saves from other emulators (`.sav`, `.srm`, `.eep`, `.fla`, `.dat`)
 - Choose a visible save folder and locate saved files through Android's document picker
+- Automatically create `saves`, `states`, `system`, `shaders`, and `cheats` folders in the selected data folder
 - Adjustable fast-forward
 - GameShark / Action Replay cheat entry
 - Android Storage Access Framework ROM picker

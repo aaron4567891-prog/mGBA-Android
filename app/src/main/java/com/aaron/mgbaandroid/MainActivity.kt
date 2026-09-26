@@ -321,6 +321,7 @@ class MainActivity : AppCompatActivity(), Choreographer.FrameCallback {
             applyVideoOptions()
             Diagnostics.record(this, "ROM loaded: video=${NativeBridge.videoWidth()}x${NativeBridge.videoHeight()}, audio=${NativeBridge.audioRate()}, display=${VideoOptions.read(this, romKey)}")
             restoreBatterySave()
+            restoreCheats()
             startAudio()
             running = true
             Choreographer.getInstance().removeFrameCallback(this)
@@ -498,8 +499,19 @@ class MainActivity : AppCompatActivity(), Choreographer.FrameCallback {
     private fun showCheatDialog() {
         val input = EditText(this).apply { hint = "GameShark / Action Replay code" }
         AlertDialog.Builder(this).setTitle("Add cheat").setView(input)
-            .setPositiveButton("Enable") { _, _ -> NativeBridge.setCheat(0, true, input.text.toString()) }
-            .setNeutralButton("Clear all") { _, _ -> NativeBridge.clearCheats() }
+            .setPositiveButton("Enable") { _, _ ->
+                val code = input.text.toString().trim()
+                if (code.isNotEmpty()) {
+                    NativeBridge.setCheat(0, true, code)
+                    cheatFile()?.apply { parentFile?.mkdirs(); appendText(code + "\n") }
+                    toast("Cheat enabled and saved")
+                }
+            }
+            .setNeutralButton("Clear all") { _, _ ->
+                NativeBridge.clearCheats()
+                cheatFile()?.delete()
+                toast("Cheats cleared")
+            }
             .setNegativeButton("Cancel", null).show()
     }
 
@@ -561,6 +573,13 @@ class MainActivity : AppCompatActivity(), Choreographer.FrameCallback {
     }
 
     private fun stateFile(slot: Int) = File(filesDir, "states/${romKey}_$slot.state").apply { parentFile?.mkdirs() }
+    private fun cheatFile() = romKey?.let { File(filesDir, "cheats/$it.cht") }
+    private fun restoreCheats() {
+        NativeBridge.clearCheats()
+        cheatFile()?.takeIf(File::exists)?.forEachLine { code ->
+            if (code.isNotBlank()) NativeBridge.setCheat(0, true, code)
+        }
+    }
     private fun restoreBatterySave() { romKey?.let { SaveStorage.read(this, it)?.let(NativeBridge::writeSaveRam) } }
     private fun persistBatterySave() { romKey?.let { key -> NativeBridge.readSaveRam().takeIf { it.isNotEmpty() }?.let { SaveStorage.write(this, key, it) } } }
     private fun toast(message: String) = Toast.makeText(this, message, Toast.LENGTH_SHORT).show()

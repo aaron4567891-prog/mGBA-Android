@@ -19,8 +19,9 @@ class SaveSettingsActivity : AppCompatActivity() {
                 Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
             )
             SaveStorage.setTreeUri(this, uri)
+            SaveStorage.ensureDataFolders(this)
             SaveStorage.migrateInternalSaves(this)
-            Toast.makeText(this, "Save folder selected", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "mGBA data folders created", Toast.LENGTH_SHORT).show()
         }.onFailure { Toast.makeText(this, it.message ?: "Could not select save folder", Toast.LENGTH_LONG).show() }
         render()
     }
@@ -39,14 +40,14 @@ class SaveSettingsActivity : AppCompatActivity() {
         root.addView(TextView(this).apply { text = "Save files"; textSize = 24f })
         root.addView(TextView(this).apply {
             text = if (selected == null) {
-                "Saves currently use app-private storage. Choose a folder to make battery saves visible and accessible to other apps."
+                "Saves currently use app-private storage. Choose a folder to create saves, states, system, shaders, and cheats folders that are accessible to other apps."
             } else {
-                "Battery saves are stored in the selected folder as <ROM hash>.sav. Existing app-private saves were copied there when you selected it."
+                "The selected folder contains saves, states, system, shaders, and cheats folders. Existing app-private saves were copied there when you selected it."
             }
             setPadding(0, 12, 0, 12)
         })
         root.addView(Button(this).apply {
-            text = if (selected == null) "Choose save folder" else "Change save folder"
+            text = if (selected == null) "Choose mGBA data folder" else "Change mGBA data folder"
             setOnClickListener { folderPicker.launch(selected) }
         })
         root.addView(Button(this).apply {
