@@ -12,6 +12,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.*
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import com.google.android.material.button.MaterialButton
 import java.io.File
@@ -134,6 +135,19 @@ class HomeActivity : AppCompatActivity() {
         backdrop.addView(root, FrameLayout.LayoutParams(-1, -1))
         setContentView(backdrop)
         refresh()
+        showUserFolderPromptIfNeeded()
+    }
+
+    private fun showUserFolderPromptIfNeeded() {
+        val settings = getSharedPreferences("emulator", MODE_PRIVATE)
+        if (settings.getBoolean("user_folder_prompt_shown", false) || SaveStorage.treeUri(this) != null) return
+        settings.edit().putBoolean("user_folder_prompt_shown", true).apply()
+        AlertDialog.Builder(this)
+            .setTitle("Set up mGBA data folder?")
+            .setMessage("Choose a folder for saves, states, BIOS files, shaders, and cheats so they are easier to access from Android file managers.")
+            .setPositiveButton("Set up") { _, _ -> startActivity(Intent(this, SaveSettingsActivity::class.java)) }
+            .setNegativeButton("Later", null)
+            .show()
     }
 
     private fun refresh() {
