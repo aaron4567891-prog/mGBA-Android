@@ -8,7 +8,7 @@ import java.io.File
 /** Battery-save storage with an optional user-selected SAF folder. */
 object SaveStorage {
     const val PREF_TREE_URI = "save_tree_uri"
-    val DATA_FOLDERS = listOf("saves", "states", "system", "shaders", "cheats")
+    val DATA_FOLDERS = listOf("saves", "saves/gba", "saves/gb", "saves/gbc", "states", "system", "shaders", "cheats", "cheats/gba", "cheats/gb", "cheats/gbc")
 
     private fun prefs(context: Context) = context.getSharedPreferences("emulator", Context.MODE_PRIVATE)
     private fun internalFile(context: Context, romKey: String) =
@@ -31,17 +31,27 @@ object SaveStorage {
         prefs(context).edit().remove(PREF_TREE_URI).apply()
     }
 
-    fun read(context: Context, romKey: String): ByteArray? {
-        val external = treeUri(context)?.let { findFile(context, it, "$romKey.sav") }
+    fun read(context: Context, romKey: String, system: String = "gba"): ByteArray? {
+        val external = treeUri(context)?.let { tree ->
+            val folder = findFile(context, tree, "saves")?.let { findFile(context, tree, it, system) }
+            folder?.let { findFile(context, tree, it, "$romKey.sav") }
+                ?: findFile(context, tree, "$romKey.sav")
+        }
         return external?.let { context.contentResolver.openInputStream(it)?.use { stream -> stream.readBytes() } }
             ?: internalFile(context, romKey).takeIf(File::exists)?.readBytes()
     }
 
-    fun write(context: Context, romKey: String, bytes: ByteArray) {
+    fun write(context: Context, romKey: String, bytes: ByteArray, system: String = "gba") {
         val file = internalFile(context, romKey)
-        val target = treeUri(context)?.let { findFile(context, it, file.name) }
+        val target = treeUri(context)?.let { tree ->
+            findFile(context, tree, "saves")?.let { findFile(context, tree, it, system) }
+                ?.let { findFile(context, tree, it, file.name) }
+        }
         if (treeUri(context) != null) {
-            val uri = target ?: createFile(context, treeUri(context)!!, file.name)
+            val tree = treeUri(context)!!
+            val saves = findFile(context, tree, "saves") ?: ensureDirectory(context, tree, "saves")
+            val folder = findFile(context, tree, saves, system) ?: ensureDirectory(context, tree, saves, system)
+            val uri = target ?: createFile(context, tree, folder, file.name)
             context.contentResolver.openOutputStream(uri, "wt")?.use { it.write(bytes) }
                 ?: error("Could not open the selected save folder")
         } else {
@@ -59,15 +69,19 @@ object SaveStorage {
                 // The user can import/replace it explicitly from the in-game menu.
                 runCatching {
                     if (treeUri(context)?.let { findFile(context, it, file.name) } == null) {
-                        write(context, file.nameWithoutExtension, file.readBytes())
+                        write(context, file.nameWithoutExtension, file.readBytes(), "gba")
                     }
                 }
             }
     }
 
     private fun findFile(context: Context, tree: Uri, name: String): Uri? {
+        return findFile(context, tree, DocumentsContract.buildDocumentUriUsingTree(tree, DocumentsContract.getTreeDocumentId(tree)), name)
+    }
+
+    private fun findFile(context: Context, tree: Uri, parent: Uri, name: String): Uri? {
         val resolver = context.contentResolver
-        val children = DocumentsContract.buildChildDocumentsUriUsingTree(tree, DocumentsContract.getTreeDocumentId(tree))
+        val children = DocumentsContract.buildChildDocumentsUriUsingTree(tree, DocumentsContract.getDocumentId(parent))
         val columns = arrayOf(DocumentsContract.Document.COLUMN_DOCUMENT_ID, DocumentsContract.Document.COLUMN_DISPLAY_NAME)
         resolver.query(children, columns, null, null, null)?.use { cursor ->
             while (cursor.moveToNext()) {
@@ -79,8 +93,7 @@ object SaveStorage {
         return null
     }
 
-    private fun createFile(context: Context, tree: Uri, name: String): Uri {
-        val parent = DocumentsContract.buildDocumentUriUsingTree(tree, DocumentsContract.getTreeDocumentId(tree))
+    private fun createFile(context: Context, tree: Uri, parent: Uri, name: String): Uri {
         return DocumentsContract.createDocument(context.contentResolver, parent, "application/octet-stream", name)
             ?: error("Could not create a save file in the selected folder")
     }
@@ -88,6 +101,11 @@ object SaveStorage {
     private fun ensureDirectory(context: Context, tree: Uri, name: String): Uri {
         findFile(context, tree, name)?.let { return it }
         val parent = DocumentsContract.buildDocumentUriUsingTree(tree, DocumentsContract.getTreeDocumentId(tree))
+        return ensureDirectory(context, tree, parent, name)
+    }
+
+    private fun ensureDirectory(context: Context, tree: Uri, parent: Uri, name: String): Uri {
+        findFile(context, tree, parent, name)?.let { return it }
         return DocumentsContract.createDocument(
             context.contentResolver,
             parent,

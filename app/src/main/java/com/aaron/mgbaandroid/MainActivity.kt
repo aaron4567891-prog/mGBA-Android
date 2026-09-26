@@ -179,6 +179,7 @@ class MainActivity : AppCompatActivity(), Choreographer.FrameCallback {
     private var running = false
     private var fastForward = false
     private var romKey: String? = null
+    private var romSystem = "gba"
     private var activeRomUri: String? = null
     private var activeArchiveEntry: String? = null
     private var audioTrack: AudioTrack? = null
@@ -316,6 +317,7 @@ class MainActivity : AppCompatActivity(), Choreographer.FrameCallback {
             romKey = null
             if (!NativeBridge.loadRom(bytes, loaded.name, prefs.getBoolean("skip_bios_${RomArchive.extension(loaded.name)}", false))) error("mGBA rejected the extracted ROM")
             romKey = MessageDigest.getInstance("SHA-256").digest(bytes).take(12).joinToString("") { "%02x".format(it) }
+            romSystem = RomArchive.extension(loaded.name).lowercase(java.util.Locale.ROOT).let { if (it == "gb" || it == "gbc") it else "gba" }
             activeRomUri = uri.toString()
             activeArchiveEntry = archiveEntry
             applyVideoOptions()
@@ -573,15 +575,15 @@ class MainActivity : AppCompatActivity(), Choreographer.FrameCallback {
     }
 
     private fun stateFile(slot: Int) = File(filesDir, "states/${romKey}_$slot.state").apply { parentFile?.mkdirs() }
-    private fun cheatFile() = romKey?.let { File(filesDir, "cheats/$it.cht") }
+    private fun cheatFile() = romKey?.let { File(filesDir, "cheats/$romSystem/$it.cht") }
     private fun restoreCheats() {
         NativeBridge.clearCheats()
         cheatFile()?.takeIf(File::exists)?.forEachLine { code ->
             if (code.isNotBlank()) NativeBridge.setCheat(0, true, code)
         }
     }
-    private fun restoreBatterySave() { romKey?.let { SaveStorage.read(this, it)?.let(NativeBridge::writeSaveRam) } }
-    private fun persistBatterySave() { romKey?.let { key -> NativeBridge.readSaveRam().takeIf { it.isNotEmpty() }?.let { SaveStorage.write(this, key, it) } } }
+    private fun restoreBatterySave() { romKey?.let { SaveStorage.read(this, it, romSystem)?.let(NativeBridge::writeSaveRam) } }
+    private fun persistBatterySave() { romKey?.let { key -> NativeBridge.readSaveRam().takeIf { it.isNotEmpty() }?.let { SaveStorage.write(this, key, it, romSystem) } } }
     private fun toast(message: String) = Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
 
     override fun onSaveInstanceState(outState: Bundle) {
