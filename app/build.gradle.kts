@@ -7,6 +7,11 @@ android {
     namespace = "com.aaron.mgbaandroid"
     compileSdk = 36
 
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+
     defaultConfig {
         applicationId = "com.aaron.mgbaandroid"
         minSdk = 26
@@ -14,7 +19,11 @@ android {
         versionCode = 1
         versionName = "0.1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        ndk { abiFilters += listOf("arm64-v8a") }
+
+        ndk {
+            abiFilters += listOf("arm64-v8a")
+        }
+
         externalNativeBuild {
             cmake {
                 cppFlags += listOf("-std=c++17", "-fexceptions")
@@ -23,14 +32,26 @@ android {
         }
     }
 
-    buildFeatures { viewBinding = false }
+    buildFeatures {
+        viewBinding = false
+    }
+
     externalNativeBuild {
         cmake {
             path = file("src/main/cpp/CMakeLists.txt")
             version = "3.22.1"
         }
     }
-    packaging { jniLibs.useLegacyPackaging = true }
+
+    packaging {
+        jniLibs.useLegacyPackaging = true
+    }
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+    }
 }
 
 dependencies {
@@ -41,4 +62,5 @@ dependencies {
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("com.google.android.material:material:1.12.0")
     implementation("androidx.activity:activity-ktx:1.10.0")
+    implementation("androidx.documentfile:documentfile:1.0.1")
 }

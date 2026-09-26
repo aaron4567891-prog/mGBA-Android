@@ -3,6 +3,7 @@ package com.aaron.mgbaandroid
 import android.content.Context
 import android.net.Uri
 import android.provider.DocumentsContract
+import androidx.documentfile.provider.DocumentFile
 import java.io.File
 
 /** Battery-save storage with an optional user-selected SAF folder. */
@@ -77,6 +78,50 @@ object SaveStorage {
 
     private fun findFile(context: Context, tree: Uri, name: String): Uri? {
         return findFile(context, tree, DocumentsContract.buildDocumentUriUsingTree(tree, DocumentsContract.getTreeDocumentId(tree)), name)
+    }
+
+    fun migrateInternalData(context: Context) {
+        val tree = treeUri(context) ?: return
+        listOf("states", "system", "shaders", "cheats").forEach { rootName ->
+            val sourceRoot = File(context.filesDir, rootName)
+            if (!sourceRoot.exists()) return@forEach
+            sourceRoot.walkTopDown().filter(File::isFile).forEach { source ->
+                runCatching {
+                    val relative = source.relativeTo(sourceRoot)
+                    var parent = ensureDirectory(context, tree, rootName)
+                    relative.parentFile?.walkTopDown()?.filter(File::isDirectory)?.forEach { directory ->
+                        parent = ensureDirectory(context, tree, parent, directory.name)
+                    }
+                    if (findFile(context, tree, parent, source.name) == null) {
+                        val target = createFile(context, tree, parent, source.name)
+                        context.contentResolver.openOutputStream(target, "wt")?.use { output ->
+                            source.inputStream().use { input -> input.copyTo(output) }
+                        } ?: error("Could not write ${source.name}")
+                    }
+                }
+            }
+        }
+    }
+
+    fun migrateUserTree(context: Context, source: Uri, destination: Uri) {
+        val sourceRoot = DocumentFile.fromTreeUri(context, source) ?: error("Old data folder is unavailable")
+        val destinationRoot = DocumentFile.fromTreeUri(context, destination) ?: error("New data folder is unavailable")
+        sourceRoot.listFiles().forEach { copyDocument(context, it, destinationRoot) }
+    }
+
+    private fun copyDocument(context: Context, source: DocumentFile, destination: DocumentFile) {
+        if (source.name.isNullOrBlank() || destination.findFile(source.name!!) != null) return
+        if (source.isDirectory) {
+            val folder = destination.createDirectory(source.name!!) ?: error("Could not create ${source.name}")
+            source.listFiles().forEach { copyDocument(context, it, folder) }
+        } else if (source.isFile) {
+            val target = destination.createFile(source.type ?: "application/octet-stream", source.name!!)
+                ?: error("Could not create ${source.name}")
+            context.contentResolver.openInputStream(source.uri)?.use { input ->
+                context.contentResolver.openOutputStream(target.uri, "wt")?.use { output -> input.copyTo(output) }
+                    ?: error("Could not write ${source.name}")
+            } ?: error("Could not read ${source.name}")
+        }
     }
 
     private fun findFile(context: Context, tree: Uri, parent: Uri, name: String): Uri? {

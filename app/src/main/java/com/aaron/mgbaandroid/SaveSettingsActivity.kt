@@ -11,18 +11,26 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 
 class SaveSettingsActivity : AppCompatActivity() {
+    private var movingUserFolder = false
     private val folderPicker = registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
         if (uri == null) return@registerForActivityResult
         runCatching {
+            val previous = SaveStorage.treeUri(this)
             contentResolver.takePersistableUriPermission(
                 uri,
                 Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
             )
             SaveStorage.setTreeUri(this, uri)
             SaveStorage.ensureDataFolders(this)
-            SaveStorage.migrateInternalSaves(this)
+            if (movingUserFolder && previous != null) SaveStorage.migrateUserTree(this, previous, uri)
+            else {
+                SaveStorage.migrateInternalData(this)
+                SaveStorage.migrateInternalSaves(this)
+            }
+            movingUserFolder = false
             Toast.makeText(this, "mGBA data folders created", Toast.LENGTH_SHORT).show()
         }.onFailure { Toast.makeText(this, it.message ?: "Could not select save folder", Toast.LENGTH_LONG).show() }
+        movingUserFolder = false
         render()
     }
 
@@ -37,7 +45,7 @@ class SaveSettingsActivity : AppCompatActivity() {
             orientation = LinearLayout.VERTICAL
             setPadding(24, 24, 24, 24)
         }
-        root.addView(TextView(this).apply { text = "Save files"; textSize = 24f })
+        root.addView(TextView(this).apply { text = "User Data"; textSize = 24f })
         root.addView(TextView(this).apply {
             text = if (selected == null) {
                 "Saves currently use app-private storage. Choose a folder to create saves, states, system, shaders, and cheats folders that are accessible to other apps."
@@ -47,8 +55,15 @@ class SaveSettingsActivity : AppCompatActivity() {
             setPadding(0, 12, 0, 12)
         })
         root.addView(Button(this).apply {
-            text = if (selected == null) "Choose mGBA data folder" else "Change mGBA data folder"
+            text = "Choose mGBA User Data Folder"
             setOnClickListener { folderPicker.launch(selected) }
+        })
+        if (selected != null) root.addView(Button(this).apply {
+            text = "Move existing user data folder"
+            setOnClickListener {
+                movingUserFolder = true
+                folderPicker.launch(null)
+            }
         })
         root.addView(Button(this).apply {
             text = "Locate save files"
