@@ -16,6 +16,7 @@ import android.widget.LinearLayout
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.activity.result.contract.ActivityResultContracts
 import com.google.android.material.button.MaterialButton
 import java.io.File
 import java.security.MessageDigest
@@ -192,6 +193,9 @@ class MainActivity : AppCompatActivity(), Choreographer.FrameCallback {
     private var audioRate = 32768
     private var wasFastForward = false
     private val prefs by lazy { getSharedPreferences("emulator", MODE_PRIVATE) }
+    private val savePicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri?.let(::importExternalSave)
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -262,6 +266,7 @@ class MainActivity : AppCompatActivity(), Choreographer.FrameCallback {
         })
         bar.addView(button("Pause/Play") { setPaused(!pausedByUser) })
         bar.addView(button("State") { showStateMenu() })
+        bar.addView(button("Import save") { openSavePicker() })
         bar.addView(button("FF") { fastForward = !fastForward; toast(if (fastForward) "Fast-forward on" else "Fast-forward off") })
         bar.addView(button("Cheat") { showCheatDialog() })
         bar.addView(button("Settings") { showSettings() })
@@ -441,6 +446,55 @@ class MainActivity : AppCompatActivity(), Choreographer.FrameCallback {
         }.show()
     }
 
+    private fun openSavePicker() {
+        if (romKey == null) return
+        savePicker.launch(arrayOf("*/*"))
+    }
+
+    private fun importExternalSave(uri: Uri) {
+        if (romKey == null) return
+        runCatching {
+            val name = contentResolver.query(
+                uri,
+                arrayOf(android.provider.OpenableColumns.DISPLAY_NAME),
+                null,
+                null,
+                null,
+            )?.use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else null }
+                ?: uri.lastPathSegment?.substringAfterLast('/')
+                ?: "external save"
+            val extension = name.substringAfterLast('.', "").lowercase(java.util.Locale.ROOT)
+            val supported = setOf("sav", "srm", "eep", "fla", "dat")
+            check(extension in supported) {
+                "Unsupported save type .$extension. Choose a .sav, .srm, .eep, .fla, or .dat file."
+            }
+            val bytes = contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                ?: error("Could not read the save file")
+            check(bytes.isNotEmpty()) { "The selected save file is empty" }
+            AlertDialog.Builder(this)
+                .setTitle("Import save?")
+                .setMessage("This replaces the current in-game battery save. The original $name file will not be changed.")
+                .setPositiveButton("Import") { _, _ ->
+                    runCatching {
+                        check(NativeBridge.writeSaveRam(bytes)) {
+                            "mGBA could not read this save. It may belong to a different game or format."
+                        }
+                        persistBatterySave()
+                        Diagnostics.record(this, "Imported external save: $name (${bytes.size} bytes)")
+                        toast("Imported save: $name")
+                    }.onFailure {
+                        Diagnostics.record(this, "External save import failed: ${it.stackTraceToString()}")
+                        toast(it.message ?: "Could not import save")
+                    }
+                }
+                .setNegativeButton("Cancel", null)
+                .show()
+        }.onFailure {
+            Diagnostics.record(this, "External save import failed: ${it.stackTraceToString()}")
+            toast(it.message ?: "Could not import save")
+        }
+    }
+
     private fun showCheatDialog() {
         val input = EditText(this).apply { hint = "GameShark / Action Replay code" }
         AlertDialog.Builder(this).setTitle("Add cheat").setView(input)
@@ -507,9 +561,8 @@ class MainActivity : AppCompatActivity(), Choreographer.FrameCallback {
     }
 
     private fun stateFile(slot: Int) = File(filesDir, "states/${romKey}_$slot.state").apply { parentFile?.mkdirs() }
-    private fun saveFile() = File(filesDir, "saves/${romKey}.sav")
-    private fun restoreBatterySave() { saveFile().takeIf(File::exists)?.readBytes()?.let(NativeBridge::writeSaveRam) }
-    private fun persistBatterySave() { if (romKey != null) NativeBridge.readSaveRam().takeIf { it.isNotEmpty() }?.let { saveFile().writeBytes(it) } }
+    private fun restoreBatterySave() { romKey?.let { SaveStorage.read(this, it)?.let(NativeBridge::writeSaveRam) } }
+    private fun persistBatterySave() { romKey?.let { key -> NativeBridge.readSaveRam().takeIf { it.isNotEmpty() }?.let { SaveStorage.write(this, key, it) } } }
     private fun toast(message: String) = Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
 
     override fun onSaveInstanceState(outState: Bundle) {

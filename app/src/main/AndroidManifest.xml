@@ -17,6 +17,7 @@
         <activity android:name=".DiagnosticsActivity" android:exported="false" />
         <activity android:name=".ShaderActivity" android:exported="false" />
         <activity android:name=".BiosActivity" android:exported="false" />
+        <activity android:name=".SaveSettingsActivity" android:exported="false" />
         <activity android:name=".HomeActivity" android:exported="true" android:launchMode="singleTop">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
